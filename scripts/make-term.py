@@ -9,7 +9,10 @@ with all three modem interfaces:
   2 = Turbo232 at $DE00 (230,400 baud)
 The app writes the interface number to CONFIG_ADDRESS ($0810) after loading, before RUN.
 Received text is printed with the KERNAL screen editor (PETSCII colours and graphics work),
-the cursor blinks while idle, and F7 hangs up (+++, ATH). Strings are written in normal ASCII:
+the cursor blinks while idle, F1 switches between PETSCII and ASCII/ANSI, and F7 hangs up (+++, ATH).
+ASCII/ANSI mode translates characters both ways (CP437 line drawing approximated), handles the ANSI
+colour codes (SGR), clear screen, cursor positioning and moves, answers the cursor position
+request (ESC[6n, how BBSes detect ANSI) and sends cursor keys as ANSI. Strings are written in normal ASCII:
 lower-case letters show as lower case and upper-case as upper case (the terminal switches to the
 upper/lower-case character set)."""
 import os
@@ -30,6 +33,10 @@ OPS = {
     ("RTS", "imp"): 0x60, ("RTI", "imp"): 0x40, ("PHA", "imp"): 0x48, ("PLA", "imp"): 0x68,
     ("TAX", "imp"): 0xAA, ("TXA", "imp"): 0x8A, ("SEI", "imp"): 0x78, ("CLI", "imp"): 0x58,
     ("SEC", "imp"): 0x38, ("CLC", "imp"): 0x18, ("INY", "imp"): 0xC8,
+    ("ASL", "imp"): 0x0A, ("TAY", "imp"): 0xA8, ("DEX", "imp"): 0xCA,
+    ("ADC", "abs"): 0x6D, ("SBC", "imm"): 0xE9, ("EOR", "imm"): 0x49,
+    ("CPX", "imm"): 0xE0, ("CPX", "abs"): 0xEC, ("STX", "abs"): 0x8E, ("CMP", "absx"): 0xDD,
+    ("BPL", "rel"): 0x10, ("BMI", "rel"): 0x30, ("INC", "abs"): 0xEE, ("INX", "imp"): 0xE8, ("TYA", "imp"): 0x98,
 }
 ONE_BYTE = {"imm", "zp", "indy", "rel"}
 
@@ -104,9 +111,66 @@ ACIA_DATA, ACIA_STATUS, ACIA_COMMAND, ACIA_CONTROL, T232_SPEED = 0xDE00, 0xDE01,
 NMINV = 0x0318
 HEAD, TAIL, STR = 0xFB, 0xFC, 0xFD      # free zero page: ring buffer indexes, string pointer
 RXBUF = 0xC000                          # 256-byte receive ring buffer (SwiftLink)
+QTSW, INSRT = 0xD4, 0xD8               # screen editor quote mode / insert count
+PLOT = 0xFFF0
+F1 = 0x85
 BLNSW, GDBLN, BLNON, PNT, PNTR, USER, GDCOL, JIFFY = 0xCC, 0xCE, 0xCF, 0xD1, 0xD3, 0xF3, 0x0287, 0xA2
 CMD_ON, CMD_HOLD = 0x09, 0x01           # DTR + receive IRQ, with / without RTS
 F7 = 0x88
+
+
+# ANSI colours 30-37 (normal, then bold/bright) as PETSCII colour codes. Black is dark grey,
+# because the screen is black.
+ANSI_COLOURS = [0x97, 0x1C, 0x1E, 0x95, 0x1F, 0x9C, 0x9F, 0x9B,
+                0x98, 0x96, 0x99, 0x9E, 0x9A, 0x9C, 0x9F, 0x05]
+
+
+def ascii_to_petscii():
+    """Received ASCII/CP437 byte → PETSCII to print (upper/lower-case set); 0 = ignore."""
+    t = [0] * 256
+    for c in range(0x20, 0x7F):
+        t[c] = c
+    for c in range(0x41, 0x5B):
+        t[c] = c + 0x80                 # A-Z → shifted (upper case)
+    for c in range(0x61, 0x7B):
+        t[c] = c - 0x20                 # a-z → unshifted (lower case)
+    t[0x5F] = 0xA4                      # _
+    t[0x60] = 0x27                      # `
+    t[0x7B], t[0x7C], t[0x7D], t[0x7E] = 0x5B, 0xDD, 0x5D, 0x2D   # { | } ~
+    t[0x0D] = 0x0D                      # CR = new line, LF ignored
+    t[0x08] = 0x9D                      # backspace = cursor left
+    t[0x09] = 0x20
+    t[0x0C] = 0x93                      # form feed = clear screen
+    for c in range(0x80, 0x100):
+        t[c] = 0x20
+    for c in (0xB3, 0xBA):
+        t[c] = 0xDD                     # │ ║
+    for c in (0xC4, 0xCD):
+        t[c] = 0xC0                     # ─ ═
+    for c in list(range(0xB4, 0xBA)) + list(range(0xBB, 0xC0)) + list(range(0xC0, 0xC4)) + \
+            list(range(0xC5, 0xCD)) + list(range(0xCE, 0xDB)):
+        t[c] = 0xDB                     # corners and tees → ┼
+    for c in (0xB0, 0xB1, 0xB2, 0xDB, 0xDC, 0xDD, 0xDE, 0xDF):
+        t[c] = 0xA6                     # shades and blocks → ▒
+    t[0xF9] = t[0xFA] = 0x2E            # middle dots
+    return t
+
+
+def petscii_to_ascii():
+    """Typed PETSCII key → ASCII to send; 0 = don't send."""
+    t = [0] * 256
+    for c in range(0x20, 0x41):
+        t[c] = c
+    for c in range(0x41, 0x5B):
+        t[c] = c + 0x20                 # unshifted letters = lower case
+    for c in range(0xC1, 0xDB):
+        t[c] = c - 0x80                 # shifted letters = upper case
+    t[0x5B], t[0x5C], t[0x5D], t[0x5E] = 0x5B, 0x5C, 0x5D, 0x5E
+    t[0xA4] = 0x5F
+    t[0x0D] = t[0x8D] = 0x0D
+    t[0x14] = 0x08                      # DEL = backspace
+    t[0x03] = 0x03                      # RUN/STOP = Ctrl-C
+    return t
 
 
 def build():
@@ -155,13 +219,25 @@ def build():
 
     a.label("loop")
     a("JSR", "abs", "recv"); a("BCS", "rel", "idle")
-    a("PHA"); a("JSR", "abs", "curoff"); a("PLA"); a("JSR", "abs", CHROUT)
+    a("PHA"); a("JSR", "abs", "curoff"); a("PLA"); a("JSR", "abs", "show")
     a("JMP", "abs", "loop")
     a.label("idle")
     a("LDA", "imm", 0); a("STA", "zp", BLNSW)                     # cursor blinks while waiting
     a("JSR", "abs", GETIN); a("BEQ", "rel", "loop")
     a("CMP", "imm", F7); a("BEQ", "rel", "hangup")
-    a("JSR", "abs", "xmit"); a("JMP", "abs", "loop")
+    a("CMP", "imm", F1); a("BEQ", "rel", "toggle")
+    a("JSR", "abs", "sendkey"); a("JMP", "abs", "loop")
+
+    a.label("toggle")                                             # F1: PETSCII <-> ASCII/ANSI
+    a("JSR", "abs", "curoff")
+    a("LDA", "abs", "mode"); a("EOR", "imm", 1); a("STA", "abs", "mode"); a("BEQ", "rel", "to_pet")
+    a("LDA", "imm", 0); a("STA", "abs", "astate"); a("STA", "abs", "bold")
+    a("LDA", "imm", 7); a("STA", "abs", "fg")
+    a("LDA", "imm", ("<", "s_ascii")); a("LDY", "imm", (">", "s_ascii")); a("JSR", "abs", "print")
+    a("JMP", "abs", "loop")
+    a.label("to_pet")
+    a("LDA", "imm", ("<", "s_pet")); a("LDY", "imm", (">", "s_pet")); a("JSR", "abs", "print")
+    a("JMP", "abs", "loop")
 
     a.label("hangup")                                             # quiet, "+++", quiet, "ATH"
     a("JSR", "abs", "curoff")
@@ -232,6 +308,147 @@ def build():
     a.label("co_done")
     a("RTS")
 
+    # show: print a received byte (PETSCII as is, or through the ASCII/ANSI decoder).
+    a.label("show")
+    a("LDX", "abs", "mode"); a("BNE", "rel", "ascii")
+    a.label("out")                                                # CHROUT without quote/insert mode
+    a("JSR", "abs", CHROUT); a("LDA", "imm", 0); a("STA", "zp", QTSW); a("STA", "zp", INSRT); a("RTS")
+    a.label("ascii")
+    a("LDX", "abs", "astate"); a("BNE", "rel", "escst")
+    a("CMP", "imm", 27); a("BNE", "rel", "plain")
+    a("LDA", "imm", 1); a("STA", "abs", "astate"); a("RTS")
+    a.label("plain")
+    a("TAX"); a("LDA", "absx", "intab"); a("BEQ", "rel", "noop"); a("JMP", "abs", "out")
+    a.label("noop")
+    a("RTS")
+    a.label("escst")
+    a("CPX", "imm", 1); a("BNE", "rel", "csi")
+    a("CMP", "imm", 0x5B); a("BNE", "rel", "endesc")          # ESC [
+    a("LDA", "imm", 2); a("STA", "abs", "astate")
+    a("LDA", "imm", 0); a("STA", "abs", "nparams"); a("STA", "abs", "cur"); a("RTS")
+    a.label("endesc")
+    a("LDA", "imm", 0); a("STA", "abs", "astate"); a("RTS")
+    a.label("csi")
+    a("CMP", "imm", 0x30); a("BCC", "rel", "notdig"); a("CMP", "imm", 0x3A); a("BCS", "rel", "notdig")
+    a("SEC"); a("SBC", "imm", 0x30); a("STA", "abs", "tmp2")      # cur = cur * 10 + digit
+    a("LDA", "abs", "cur"); a("ASL"); a("ASL"); a("CLC"); a("ADC", "abs", "cur"); a("ASL")
+    a("CLC"); a("ADC", "abs", "tmp2"); a("STA", "abs", "cur"); a("RTS")
+    a.label("notdig")
+    a("CMP", "imm", 0x3B); a("BNE", "rel", "notsemi")          # ;
+    a("JMP", "abs", "pushp")
+    a.label("notsemi")
+    a("CMP", "imm", 0x40); a("BCC", "rel", "noop")              # ?, space…: ignored
+    a("PHA"); a("JSR", "abs", "pushp")
+    a("LDA", "imm", 0); a("STA", "abs", "astate"); a("PLA")
+    a("CMP", "imm", 0x6D); a("BNE", "rel", "f_j"); a("JMP", "abs", "sgr")         # m
+    a.label("f_j")
+    a("CMP", "imm", 0x4A); a("BNE", "rel", "f_h")                                 # J
+    a("LDA", "abs", "params"); a("CMP", "imm", 2); a("BNE", "rel", "noop")
+    a("LDA", "imm", 0x93); a("JMP", "abs", "out")
+    a.label("f_h")
+    a("CMP", "imm", 0x6E); a("BNE", "rel", "f_h2"); a("JMP", "abs", "dsr")             # n
+    a.label("f_h2")
+    a("CMP", "imm", 0x48); a("BEQ", "rel", "cup"); a("CMP", "imm", 0x66); a("BEQ", "rel", "cup")   # H f
+    a("CMP", "imm", 0x41); a("BCC", "rel", "noop"); a("CMP", "imm", 0x45); a("BCS", "rel", "noop")  # A-D
+    a("SEC"); a("SBC", "imm", 0x41); a("TAX"); a("LDA", "absx", "movetab"); a("STA", "abs", "tmp2")
+    a("LDA", "abs", "params"); a("BNE", "rel", "mv1"); a("LDA", "imm", 1)
+    a.label("mv1")
+    a("CMP", "imm", 41); a("BCC", "rel", "mv2"); a("LDA", "imm", 40)
+    a.label("mv2")
+    a("TAX")
+    a.label("mvl")
+    a("LDA", "abs", "tmp2"); a("JSR", "abs", CHROUT); a("DEX"); a("BNE", "rel", "mvl"); a("RTS")
+
+    a.label("cup")                                                # ESC [ row ; col H  (1-based)
+    a("LDA", "abs", "params"); a("JSR", "abs", "dec1"); a("CMP", "imm", 25); a("BCC", "rel", "rowok")
+    a("LDA", "imm", 24)
+    a.label("rowok")
+    a("TAX")
+    a("LDA", "abs", "nparams"); a("CMP", "imm", 2); a("BCC", "rel", "colz")
+    a("LDA", "abs", "params1"); a("JSR", "abs", "dec1"); a("CMP", "imm", 40); a("BCC", "rel", "colok")
+    a("LDA", "imm", 39); a("BNE", "rel", "colok")
+    a.label("colz")
+    a("LDA", "imm", 0)
+    a.label("colok")
+    a("TAY"); a("CLC"); a("JMP", "abs", PLOT)
+    a.label("dec1")
+    a("CMP", "imm", 0); a("BEQ", "rel", "d1r"); a("SEC"); a("SBC", "imm", 1)
+    a.label("d1r")
+    a("RTS")
+
+    a.label("dsr")                                                # ESC [ 6 n → ESC [ row ; col R (ANSI detection)
+    a("LDA", "abs", "params"); a("CMP", "imm", 6); a("BNE", "rel", "dsrx")
+    a("SEC"); a("JSR", "abs", PLOT); a("STX", "abs", "drow"); a("TYA"); a("PHA")
+    a("LDA", "imm", 27); a("JSR", "abs", "xmit"); a("LDA", "imm", 0x5B); a("JSR", "abs", "xmit")
+    a("LDA", "abs", "drow"); a("JSR", "abs", "sendnum"); a("LDA", "imm", 0x3B); a("JSR", "abs", "xmit")
+    a("PLA"); a("JSR", "abs", "sendnum"); a("LDA", "imm", 0x52); a("JMP", "abs", "xmit")
+    a.label("dsrx")
+    a("RTS")
+    a.label("sendnum")                                            # send A+1 in decimal (1-99)
+    a("CLC"); a("ADC", "imm", 1); a("LDX", "imm", 0)
+    a.label("sn1")
+    a("CMP", "imm", 10); a("BCC", "rel", "sn2"); a("SBC", "imm", 10); a("INX"); a("BNE", "rel", "sn1")
+    a.label("sn2")
+    a("PHA"); a("TXA"); a("BEQ", "rel", "sn3"); a("CLC"); a("ADC", "imm", 0x30); a("JSR", "abs", "xmit")
+    a.label("sn3")
+    a("PLA"); a("CLC"); a("ADC", "imm", 0x30); a("JMP", "abs", "xmit")
+
+    a.label("pushp")                                              # end of a parameter
+    a("LDX", "abs", "nparams"); a("CPX", "imm", 8); a("BCS", "rel", "pp2")
+    a("LDA", "abs", "cur"); a("STA", "absx", "params"); a("INC", "abs", "nparams")
+    a.label("pp2")
+    a("LDA", "imm", 0); a("STA", "abs", "cur"); a("RTS")
+
+    a.label("sgr")                                                # ESC [ … m: colours, bold, reverse
+    a("LDX", "imm", 0)
+    a.label("sgl")
+    a("CPX", "abs", "nparams"); a("BCS", "rel", "sgdone")
+    a("LDA", "absx", "params"); a("JSR", "abs", "sgr1"); a("INX"); a("JMP", "abs", "sgl")
+    a.label("sgdone")
+    a("RTS")
+    a.label("sgr1")
+    a("STX", "abs", "sgx")
+    a("CMP", "imm", 0); a("BNE", "rel", "s1")
+    a("LDA", "imm", 0); a("STA", "abs", "bold"); a("LDA", "imm", 7); a("STA", "abs", "fg")
+    a("LDA", "imm", 0x92); a("JSR", "abs", CHROUT); a("JMP", "abs", "emitfg")
+    a.label("s1")
+    a("CMP", "imm", 1); a("BNE", "rel", "s22"); a("LDA", "imm", 1); a("STA", "abs", "bold"); a("JMP", "abs", "emitfg")
+    a.label("s22")
+    a("CMP", "imm", 22); a("BNE", "rel", "s7"); a("LDA", "imm", 0); a("STA", "abs", "bold"); a("JMP", "abs", "emitfg")
+    a.label("s7")
+    a("CMP", "imm", 7); a("BNE", "rel", "s27"); a("LDA", "imm", 0x12); a("JSR", "abs", CHROUT); a("JMP", "abs", "sret")
+    a.label("s27")
+    a("CMP", "imm", 27); a("BNE", "rel", "s39"); a("LDA", "imm", 0x92); a("JSR", "abs", CHROUT); a("JMP", "abs", "sret")
+    a.label("s39")
+    a("CMP", "imm", 39); a("BNE", "rel", "s30"); a("LDA", "imm", 7); a("STA", "abs", "fg"); a("JMP", "abs", "emitfg")
+    a.label("s30")
+    a("CMP", "imm", 30); a("BCC", "rel", "sret"); a("CMP", "imm", 38); a("BCS", "rel", "s90")
+    a("SEC"); a("SBC", "imm", 30); a("STA", "abs", "fg"); a("JMP", "abs", "emitfg")
+    a.label("s90")                                                # 90-97: bright colours
+    a("CMP", "imm", 90); a("BCC", "rel", "sret"); a("CMP", "imm", 98); a("BCS", "rel", "sret")
+    a("SEC"); a("SBC", "imm", 82); a("TAX"); a("LDA", "absx", "coltab"); a("JSR", "abs", CHROUT); a("JMP", "abs", "sret")
+    a.label("emitfg")
+    a("LDA", "abs", "bold"); a("BEQ", "rel", "ef1"); a("LDA", "imm", 8)
+    a.label("ef1")
+    a("CLC"); a("ADC", "abs", "fg"); a("TAX"); a("LDA", "absx", "coltab"); a("JSR", "abs", CHROUT)
+    a.label("sret")
+    a("LDX", "abs", "sgx"); a("RTS")
+
+    # sendkey: send a typed key (translated to ASCII, cursor keys as ANSI, in ASCII mode).
+    a.label("sendkey")
+    a("LDX", "abs", "mode"); a("BNE", "rel", "skasc"); a("JMP", "abs", "xmit")
+    a.label("skasc")
+    a("LDX", "imm", 3)
+    a.label("skc")
+    a("CMP", "absx", "curkeys"); a("BEQ", "rel", "skcur"); a("DEX"); a("BPL", "rel", "skc")
+    a("TAX"); a("LDA", "absx", "outtab"); a("BEQ", "rel", "skr"); a("JMP", "abs", "xmit")
+    a.label("skr")
+    a("RTS")
+    a.label("skcur")
+    a("STX", "abs", "skx")
+    a("LDA", "imm", 27); a("JSR", "abs", "xmit"); a("LDA", "imm", 0x5B); a("JSR", "abs", "xmit")
+    a("LDX", "abs", "skx"); a("LDA", "absx", "curletters"); a("JMP", "abs", "xmit")
+
     a.label("print")
     a("STA", "zp", STR); a("STY", "zp", STR + 1)
     a("LDY", "imm", 0)
@@ -240,6 +457,23 @@ def build():
     a.label("pd")
     a("RTS")
 
+    a.label("mode"); a.byte(0)
+    a.label("astate"); a.byte(0)
+    a.label("cur"); a.byte(0)
+    a.label("nparams"); a.byte(0)
+    a.label("params"); a.byte(0); a.label("params1"); a.byte(0, 0, 0, 0, 0, 0, 0)
+    a.label("tmp2"); a.byte(0)
+    a.label("fg"); a.byte(7)
+    a.label("bold"); a.byte(0)
+    a.label("sgx"); a.byte(0)
+    a.label("skx"); a.byte(0)
+    a.label("drow"); a.byte(0)
+    a.label("movetab"); a.byte(0x91, 0x11, 0x1D, 0x9D)          # ESC[A up, B down, C right, D left
+    a.label("curkeys"); a.byte(0x91, 0x11, 0x1D, 0x9D)
+    a.label("curletters"); a.byte(0x41, 0x42, 0x43, 0x44)
+    a.label("coltab"); a.byte(*ANSI_COLOURS)
+    a.label("intab"); a.byte(*ascii_to_petscii())
+    a.label("outtab"); a.byte(*petscii_to_ascii())
     a.label("tmp"); a.byte(0)
     a.label("paused"); a.byte(0)
     a.label("oldnmi"); a.byte(0x47); a.label("oldnmi1"); a.byte(0xFE)
@@ -250,7 +484,9 @@ def build():
     a.label("s_up"); a.text("User Port, 1200 baud\r")
     a.label("s_sl"); a.text("SwiftLink $DE00, 38400 baud\r")
     a.label("s_tb"); a.text("Turbo232 $DE00, 230400 baud\r")
-    a.label("s_help"); a.text("Dial: atdt host:port  (or use the Mac's\rModem menu).  F7 hangs up.\r\r")
+    a.label("s_help"); a.text("Dial: atdt host:port  (or use the Mac's\rModem menu).  F1 ASCII/ANSI, F7 hangs up.\r\r")
+    a.label("s_ascii"); a.text("\x0e\x9b\r(ASCII/ANSI mode, F1 = PETSCII)\r")
+    a.label("s_pet"); a.text("\x05\r(PETSCII mode, F1 = ASCII/ANSI)\r")
     a.label("s_hang"); a.text("\r(hanging up...)\r")
     return a.assemble()
 

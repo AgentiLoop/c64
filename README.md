@@ -69,6 +69,11 @@ plug into real C64s. Plenty of Commodore BBSes are still online: see the [BBS li
 2. Pick a board from **Modem ▸ Phone Book**, or type `ATDT host:port` in the terminal
    (e.g. `ATDT oasisbbs.hopto.org:6400`).
 3. Hang up with **F7** in the terminal, **Modem ▸ Hang Up**, or `+++` (wait a second) and `ATH`.
+4. **F1** switches the terminal between PETSCII (Commodore boards) and ASCII/ANSI (PC-style boards such
+   as Synchronet). ASCII/ANSI mode translates upper/lower case both ways, shows ANSI colours, clears the
+   screen, positions and moves the cursor, draws CP437 line graphics with the nearest PETSCII
+   characters, answers the ANSI detection request (`ESC[6n`) and sends cursor keys as ANSI. Lines are
+   40 columns wide.
 
 **Modem ▸ Interface** chooses where the modem is plugged in:
 

@@ -101,4 +101,45 @@ final class ModemTests: XCTestCase {
         XCTAssertEqual(hungUp, 1)
         XCTAssertFalse(modem.carrier)
     }
+    /// F1 switches to ASCII/ANSI: ANSI clear screen, colours and cursor positioning, case translation both ways.
+    func testASCIIANSIMode() throws {
+        let (c64, modem) = try makeMachine(.swiftLink)
+        XCTAssertTrue(run(c64, until: "OK"), screen(c64))
+        c64.setKey(.f1, pressed: true)
+        for _ in 0..<4 { c64.runFrame() }
+        c64.setKey(.f1, pressed: false)
+        XCTAssertTrue(run(c64, until: "MODE,"), screen(c64))   // "(ASCII/ANSI mode, F1 = PETSCII)"
+
+        modem.dial(host: "ansi.example.com", port: 23)
+        modem.connected()
+        for _ in 0..<20 { c64.runFrame() }
+        let ansi = "\u{1B}[2J\u{1B}[1;31mhello world\u{1B}[0m\r\n\u{1B}[5;10Hx\u{1B}[?25l\u{1B}[0;36mz{|}"
+        modem.receive(Array(ansi.utf8) + [0xC4, 0xB3])   // CP437 ─ │
+        for _ in 0..<30 { c64.runFrame() }
+        let rows = c64.screenText()
+        XCTAssertEqual(String(rows[0].prefix(11)), "HELLO WORLD", rows.joined(separator: "\n"))   // screen cleared
+        XCTAssertEqual(c64.colorRAM[0] & 0x0F, 10)   // bold red = light red
+        let row4 = Array(rows[4])
+        XCTAssertEqual(row4[9], "X", rows.joined(separator: "\n"))   // ESC[5;10H
+        XCTAssertEqual(row4[10], "Z")
+        XCTAssertEqual(c64.colorRAM[4 * 40 + 10] & 0x0F, 3)           // cyan
+        XCTAssertFalse(rows.joined().contains("25L"), rows.joined(separator: "\n"))   // ESC[?25l swallowed
+        let screenBase = 0x0400 + 4 * 40
+        XCTAssertEqual(c64.ram[screenBase + 11], 0x1B)   // { → [
+        XCTAssertEqual(c64.ram[screenBase + 12], 0x5D)   // | → vertical line
+        XCTAssertEqual(c64.ram[screenBase + 13], 0x1D)   // } → ]
+        XCTAssertEqual(c64.ram[screenBase + 14], 0x40)   // ─
+        XCTAssertEqual(c64.ram[screenBase + 15], 0x5D)   // │
+
+        sent = []
+        c64.queueTyping("hi\n")
+        for _ in 0..<100 where sent.count < 3 { c64.runFrame() }
+        XCTAssertEqual(sent, [0x68, 0x69, 13])   // lower case ASCII
+
+        // ANSI detection: ESC[6n is answered with the cursor position.
+        sent = []
+        modem.receive(Array("\u{1B}[12;34H\u{1B}[6n".utf8))
+        for _ in 0..<30 where sent.count < 8 { c64.runFrame() }
+        XCTAssertEqual(String(decoding: sent, as: UTF8.self), "\u{1B}[12;34R")
+    }
 }
