@@ -27,6 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var pendingOpen: URL?
     var fastLoadItem: NSMenuItem!
     var borderItems: [NSMenuItem] = []
+    var standardItems: [NSMenuItem] = []
 
     /// Border sizes: full PAL picture, a thin border, or just the 320×200 screen.
     static let borderCrops: [(String, CGRect)] = [
@@ -41,6 +42,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard let roms = loadROMs() else { NSApp.terminate(nil); return }
         let c64 = C64(roms: roms)
         c64.fastLoad = UserDefaults.standard.object(forKey: "FastLoad") as? Bool ?? true
+        if let raw = UserDefaults.standard.string(forKey: "VideoStandard"),
+           let std = VideoStandard(rawValue: raw), std != .pal {
+            c64.standard = std
+        }
+        for item in standardItems { item.state = item.representedObject as? String == c64.standard.rawValue ? .on : .off }
         runner = EmulatorRunner(c64: c64, audio: audio)
         runner.warpWhileDisk = UserDefaults.standard.object(forKey: "WarpWhileDisk") as? Bool ?? true
         fastLoadItem.state = c64.fastLoad ? .on : .off
@@ -320,6 +326,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         sender.state = runner.warpWhileTape ? .on : .off
     }
 
+    // MARK: - Video standard
+
+    /// Switches the machine between PAL and NTSC. This resets the C64, like swapping
+    /// the computer, so a confirmation is shown first.
+    @objc func setVideoStandard(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String, let std = VideoStandard(rawValue: raw),
+              sender.state != .on else { return }
+        let alert = NSAlert()
+        alert.messageText = "Switch to \(std == .pal ? "PAL" : "NTSC")?"
+        alert.informativeText = "The C64 will restart. Anything in memory that isn't saved will be lost."
+        alert.addButton(withTitle: "Restart as \(std == .pal ? "PAL" : "NTSC")")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        UserDefaults.standard.set(raw, forKey: "VideoStandard")
+        for item in standardItems { item.state = item === sender ? .on : .off }
+        runner.perform { $0.standard = std }
+    }
+
     // MARK: - Border
 
     @objc func setBorder(_ sender: NSMenuItem) {
@@ -528,7 +552,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         ])
         add("Edit", [mi("Paste as Typing", #selector(pasteText(_:)), "v")])
         warpItem = mi("Warp Mode", #selector(toggleWarp(_:)), "j")
+        standardItems = [("PAL (UK, Europe, Australia) — 50 Hz", "pal"), ("NTSC (USA, Canada, Japan) — 60 Hz", "ntsc")].map {
+            let item = mi($0.0, #selector(setVideoStandard(_:)))
+            item.representedObject = $0.1
+            item.state = $0.1 == "pal" ? .on : .off
+            return item
+        }
+        let standardMenu = NSMenu(title: "Video Standard")
+        standardItems.forEach(standardMenu.addItem)
+        let standardItem = NSMenuItem(title: "Video Standard", action: nil, keyEquivalent: "")
+        standardItem.submenu = standardMenu
         add("Machine", [
+            standardItem,
+            .separator(),
             mi("Reset", #selector(softReset(_:)), "r"),
             mi("Hard Reset", #selector(hardReset(_:)), "r", [.command, .shift]),
             .separator(),

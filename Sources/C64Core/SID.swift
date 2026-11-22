@@ -133,7 +133,11 @@ public final class SID {
     var filterDamp: Float = 1.4
 
     // Sample output
-    public var sampleRate: Double = 44_100 { didSet { cyclesPerSample = Double(C64.palClock) / sampleRate } }
+    public var sampleRate: Double = 44_100 { didSet { cyclesPerSample = Double(clockHz) / sampleRate } }
+    /// Chip clock; the same register values give ~4% higher pitch on NTSC machines.
+    public var clockHz = C64.palClock {
+        didSet { cyclesPerSample = Double(clockHz) / sampleRate; updateFilter() }
+    }
     var cyclesPerSample = Double(C64.palClock) / 44_100
     var sampleClock: Double = 0
     var accumulator: Float = 0
@@ -159,7 +163,7 @@ public final class SID {
         // 6581-like mapping from the 11-bit register to a cutoff frequency.
         let fc = Float(filterCutoff) / 2047
         let hz = 200 + 17_800 * fc * fc * (0.4 + 0.6 * fc) + 3000 * fc
-        filterF = min(2 * sinf(Float.pi * hz / (Float(C64.palClock) / 4)), 1.2)
+        filterF = min(2 * sinf(Float.pi * hz / (Float(clockHz) / 4)), 1.2)
         filterDamp = 1.4 - Float(filterResonance) * (1.15 / 15)
     }
 

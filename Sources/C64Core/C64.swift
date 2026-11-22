@@ -3,7 +3,25 @@ import Foundation
 /// The complete C64: 6510 + PLA memory map, VIC-II, SID, two CIAs, keyboard, joysticks.
 public final class C64: CPUBus {
     public static let palClock = 985_248
+    public static let ntscClock = 1_022_727
     public static let cyclesPerFrame = VICII.cyclesPerLine * VICII.linesPerFrame
+
+    /// PAL or NTSC machine. Changing it switches the VIC-II model and clock and resets.
+    public var standard: VideoStandard {
+        get { vic.standard }
+        set {
+            vic.setStandard(newValue)
+            sid.clockHz = clockHz
+            drive8?.hostClock = clockHz
+            drive9?.hostClock = clockHz
+            reset()
+        }
+    }
+    /// CPU clock in Hz for the current standard.
+    public var clockHz: Int { vic.standard == .pal ? C64.palClock : C64.ntscClock }
+    public var frameCycles: Int { vic.cyclesPerLine * vic.linesPerFrame }
+    /// Mains frequency driving the CIA time-of-day clocks.
+    public var mainsHz: Int { vic.standard == .pal ? 50 : 60 }
 
     public private(set) var cpu: CPU6502!
     public let vic = VICII()
@@ -62,6 +80,7 @@ public final class C64: CPUBus {
         if let d = drive9 { return d }
         guard let r = rom1581 else { return nil }
         drive9 = Drive1581(rom: r, iec: iec, deviceNumber: 9)
+        drive9?.hostClock = clockHz
         return drive9
     }
     /// The Datasette on the cassette port.
@@ -89,6 +108,7 @@ public final class C64: CPUBus {
         self.init(basic: roms.basic, kernal: roms.kernal, chargen: roms.chargen)
         if let r = roms.drive1541 {
             drive8 = Drive1541(rom: r, iec: iec)
+            drive8?.hostClock = clockHz
         }
         rom1581 = roms.drive1581
         updateIECDevices()   // didSet does not fire inside an initializer
@@ -159,7 +179,7 @@ public final class C64: CPUBus {
         if datasette.mode == .playing { datasette.tick(motor: cassetteMotor, cia: cia1) }
         cycles &+= 1
         todCounter += 1
-        if todCounter >= C64.palClock / 50 {
+        if todCounter >= clockHz / mainsHz {
             todCounter = 0
             cia1.tickTOD()
             cia2.tickTOD()

@@ -1,8 +1,14 @@
-// MOS 6569 VIC-II (PAL). Cycle-stepped: badlines, sprite DMA, border flip-flops, raster IRQ,
+// MOS 6569 (PAL) / 6567R8 (NTSC) VIC-II. Cycle-stepped: badlines, sprite DMA, border flip-flops, raster IRQ,
 // all graphics modes, sprites with collisions. Draws 8 pixels per cycle so mid-line register
 // changes (raster bars, tape loading stripes) show up.
 
+/// TV standard of the machine: PAL (UK/Europe/Australia) or NTSC (USA/Canada/Japan).
+public enum VideoStandard: String, CaseIterable {
+    case pal, ntsc
+}
+
 public final class VICII {
+    /// PAL timing (the default machine).
     public static let cyclesPerLine = 63
     public static let linesPerFrame = 312
     public static let screenWidth = 384
@@ -59,7 +65,19 @@ public final class VICII {
     var spriteCollisionSS: UInt8 = 0
     var spriteCollisionSB: UInt8 = 0
 
+    public private(set) var standard = VideoStandard.pal
+    public private(set) var cyclesPerLine = 63
+    public private(set) var linesPerFrame = 312
+
     public init() {}
+
+    /// Switches between the PAL 6569 (63 cycles × 312 lines) and NTSC 6567R8 (65 × 263).
+    public func setStandard(_ s: VideoStandard) {
+        standard = s
+        cyclesPerLine = s == .pal ? 63 : 65
+        linesPerFrame = s == .pal ? 312 : 263
+        reset()
+    }
 
     public func reset() {
         regs = [UInt8](repeating: 0, count: 0x40)
@@ -71,9 +89,9 @@ public final class VICII {
     // MARK: - Bus arbitration
 
     /// Sprite n pointer fetch cycle (PAL).
-    @inline(__always) static func spriteCycle(_ n: Int) -> Int {
-        let c = 58 + 2 * n
-        return c > 63 ? c - 63 : c
+    @inline(__always) func spriteCycle(_ n: Int) -> Int {
+        let c = cyclesPerLine - 5 + 2 * n
+        return c > cyclesPerLine ? c - cyclesPerLine : c
     }
 
     /// True when the VIC holds the bus in the current cycle, so a CPU access of the given
@@ -81,9 +99,9 @@ public final class VICII {
     @inline(__always) public func blocksCPU(write: Bool) -> Bool {
         if badline && cycle >= (write ? 15 : 12) && cycle <= 54 { return true }
         for n in 0..<8 where spriteDMA[n] {
-            let sc = VICII.spriteCycle(n)
+            let sc = spriteCycle(n)
             var d = cycle - sc
-            if d < -10 { d += 63 } else if d > 10 { d -= 63 }
+            if d < -10 { d += cyclesPerLine } else if d > 10 { d -= cyclesPerLine }
             if d >= (write ? 0 : -3) && d <= 1 { return true }
         }
         return false
@@ -246,7 +264,7 @@ public final class VICII {
         default: break
         }
 
-        if cycle == 63 {
+        if cycle == cyclesPerLine {
             let rsel = regs[0x11] & 0x08 != 0
             if raster == (rsel ? 251 : 247) { verticalBorder = true }
             if raster == (rsel ? 51 : 55) && den { verticalBorder = false }
@@ -256,7 +274,7 @@ public final class VICII {
         // g-access of column i-1 precedes the c-access of column i in the same cycle.
         if cycle >= 16 && cycle <= 55 { gAccess() }
         if badline && cycle >= 15 && cycle <= 54 && vmli < 40 { cAccess() }
-        for n in 0..<8 where VICII.spriteCycle(n) == cycle { spriteFetchCycle(n) }
+        for n in 0..<8 where spriteCycle(n) == cycle { spriteFetchCycle(n) }
 
         // Pixel output
         let line = raster - VICII.firstVisibleLine
@@ -266,16 +284,26 @@ public final class VICII {
         }
 
         cycle += 1
-        if cycle > VICII.cyclesPerLine {
+        if cycle > cyclesPerLine {
             cycle = 1
             raster += 1
-            if raster >= VICII.linesPerFrame {
+            if raster >= linesPerFrame {
+                if standard == .ntsc { fillUnusedLines() }
                 raster = 0
                 vcbase = 0
                 frameCount += 1
                 onFrame?()
             }
         }
+    }
+
+    /// NTSC frames have fewer lines than the 272-line picture; the rows below the last
+    /// raster line show the border colour (the TV's bottom overscan).
+    private func fillUnusedLines() {
+        let firstUnused = linesPerFrame - VICII.firstVisibleLine
+        guard firstUnused < VICII.screenHeight else { return }
+        let color = VICII.palette[Int(regs[0x20] & 0x0F)]
+        for i in firstUnused * VICII.screenWidth..<VICII.screenHeight * VICII.screenWidth { frameBuffer[i] = color }
     }
 
     private func checkSpriteDMAStart() {

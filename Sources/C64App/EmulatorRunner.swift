@@ -47,7 +47,7 @@ final class EmulatorRunner {
     func stop() { running = false }
 
     private func loop() {
-        let period = Double(C64.cyclesPerFrame) / Double(C64.palClock)
+        var period: Double { Double(c64.frameCycles) / Double(c64.clockHz) }
         var deadline = Date().timeIntervalSinceReferenceDate
         var frameCounter = 0
         while running {

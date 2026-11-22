@@ -7,6 +7,7 @@ Native Swift/AppKit emulator of a PAL Commodore 64.
 | Part | State |
 |------|-------|
 | 6510 CPU | Cycle-exact bus accesses, all documented + undocumented opcodes, passes Klaus Dormann's functional test |
+| Video standard | PAL (6569, 50 Hz, default) or NTSC (6567R8, 60 Hz) via Machine ▸ Video Standard; CPU, SID pitch, CIA clocks and drive timing follow; the KERNAL detects the machine itself |
 | VIC-II (6569) | Cycle-stepped: badlines, sprite DMA/cycle stealing, border flip-flops, raster IRQ, all text/bitmap modes, sprites + collisions |
 | SID (6581) | 3 voices, all waveforms, sync/ring, ADSR with real rate tables, resonant multimode filter, digi (volume DC) |
 | CIA 6526 ×2 | Timers A/B, TOD, ICR, keyboard/joystick ports, VIC bank, IEC lines, NMI |

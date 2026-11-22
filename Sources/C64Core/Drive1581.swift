@@ -14,6 +14,8 @@ public final class Drive1581: CPUBus, IECDevice {
     var diskChanged = true
     var atnAsserted = false
     var clockAcc = 0
+    /// Clock of the C64 driving this drive (PAL 985 248 Hz / NTSC 1 022 727 Hz).
+    public var hostClock = C64.palClock
     var cycleDebt = 0
     public private(set) var cycles: UInt64 = 0
 
@@ -105,7 +107,7 @@ public final class Drive1581: CPUBus, IECDevice {
     /// Called once per C64 cycle; runs the drive at 2 MHz.
     @inline(__always) public func clockC64Cycle() {
         clockAcc += 2_000_000
-        while clockAcc >= 985_248 { clockAcc -= 985_248; cycleDebt += 1 }
+        while clockAcc >= hostClock { clockAcc -= hostClock; cycleDebt += 1 }
         while cycleDebt > 0 { cpu.step() }
     }
 
