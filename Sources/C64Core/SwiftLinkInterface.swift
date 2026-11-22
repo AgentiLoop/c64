@@ -8,8 +8,12 @@ import Foundation
 /// "no carrier" is reported in the DSR bit (the cartridge swaps DCD and DSR).
 ///
 /// Emulator-only flow control: a byte is only handed to the C64 when the previous one has been
-/// read (and RTS is asserted), so a slow program never overruns.
+/// read (and RTS is asserted), and no sooner than `minReadGap` cycles after that read, so the NMI
+/// handler can return before the next byte arrives. A slow program never overruns (a real 6551
+/// at 230,400 baud would).
 final class SwiftLinkInterface {
+    /// Cycles between reading a byte and the next one arriving: enough for an NMI handler to finish.
+    static let minReadGap = 80
     static let bpsTable: [Double] = [10, 50, 75, 109.92, 134.58, 150, 300, 600, 1200, 1800,
                                      2400, 3600, 4800, 7200, 9600, 19200]
     static let turboTable: [Double] = [230400, 115200, 57600, 28800]
@@ -70,6 +74,7 @@ final class SwiftLinkInterface {
         switch address & (turbo232 ? 7 : 3) {
         case 0:
             status &= ~(0x07 | SwiftLinkInterface.rdrf)
+            rxNextAt = max(rxNextAt, now &+ UInt64(SwiftLinkInterface.minReadGap))
             return rxData
         case 1:
             let v = status & 0x1F | (modem.carrier ? 0 : SwiftLinkInterface.noCarrier) | (irq ? 0x80 : 0)

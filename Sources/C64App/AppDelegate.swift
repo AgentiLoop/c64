@@ -541,14 +541,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         runner.perform { $0.modemPort = port }
     }
 
-    /// Autostarts the bundled BASIC terminal (1200 baud, KERNAL RS-232), which needs the user port.
+    /// Autostarts the bundled terminal on the selected interface (user port 1200, SwiftLink 38,400,
+    /// Turbo232 230,400). The interface number goes into the program's config byte at $0810.
     @objc func loadTerminal(_ sender: Any?) {
         guard let url = Bundle.main.url(forResource: "TERM", withExtension: "PRG"),
               let data = FileManager.default.contents(atPath: url.path) else { return }
-        applyModemPort(.userPort)
         runner.perform { c64 in
+            c64.reset()   // a terminal that is already running would otherwise read the typed RUN
             C64Autostart.ensureBooted(c64)
             c64.loadPRG([UInt8](data))
+            c64.ram[0x0810] = [.userPort: 0, .swiftLink: 1, .turbo232: 2][c64.modemPort] ?? 0
             c64.typeIntoBuffer("RUN\n")
         }
     }
@@ -730,7 +732,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         portItem.submenu = portMenu
         add("Modem", [
             portItem,
-            mi("Load Terminal Program (User Port)", #selector(loadTerminal(_:))),
+            mi("Load Terminal Program", #selector(loadTerminal(_:))),
             .separator(),
             phoneBookItem,
             mi("Dial Address…", #selector(dialAddress(_:))),

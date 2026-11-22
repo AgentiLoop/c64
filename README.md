@@ -63,10 +63,12 @@ by default.
 A Hayes-style modem "dials" internet hosts instead of phone numbers, like the WiFi modems people
 plug into real C64s. Plenty of Commodore BBSes are still online: see the [BBS list](docs/BBS-LIST.md).
 
-1. **Modem ▸ Load Terminal Program (User Port)** starts a small BASIC terminal (1200 baud, KERNAL RS-232).
+1. Choose **Modem ▸ Interface**, then **Modem ▸ Load Terminal Program**. The built-in terminal (machine code,
+   PETSCII colour graphics, blinking cursor) starts on that interface: user port 1200, SwiftLink 38,400 or
+   Turbo232 230,400 baud.
 2. Pick a board from **Modem ▸ Phone Book**, or type `ATDT host:port` in the terminal
    (e.g. `ATDT oasisbbs.hopto.org:6400`).
-3. Hang up with **Modem ▸ Hang Up**, or `+++` (wait a second) and `ATH`.
+3. Hang up with **F7** in the terminal, **Modem ▸ Hang Up**, or `+++` (wait a second) and `ATH`.
 
 **Modem ▸ Interface** chooses where the modem is plugged in:
 
@@ -76,10 +78,10 @@ plug into real C64s. Plenty of Commodore BBSes are still online: see the [BBS li
 | SwiftLink $DE00 | up to 38,400 baud | 6551 ACIA cartridge, interrupt on NMI, rates doubled by its 3.6864 MHz crystal. Hang up by dropping DTR works. |
 | Turbo232 $DE00 | up to 230,400 baud | SwiftLink plus the enhanced speed register at $DE07 (57,600 / 115,200 / 230,400). |
 
-For SwiftLink and Turbo232 use a terminal that supports them, such as
-[CCGMS Future](https://github.com/mist64/ccgmsterm) (F7 ▸ Modem Type "Swift / Turbo DE", Baud Rate 38400).
-CCGMS has been tested at 38,400 against The Oasis BBS; Turbo232's faster rates are covered by unit
-tests only.
+The built-in terminal has been tested live against The Oasis BBS on SwiftLink (38,400) and Turbo232
+(230,400). Other terminals that support these interfaces work too, e.g.
+[CCGMS Future](https://github.com/mist64/ccgmsterm) (F7 ▸ Modem Type "Swift / Turbo DE", Baud Rate 38400),
+which adds file transfers. The terminal's source is `scripts/make-term.py` (a small built-in 6502 assembler).
 
 * Commands: `ATD`/`ATDT host[:port]` (port 23 by default), `ATH`, `ATO`, `ATZ`, `ATE0`/`ATE1`, `ATI`,
   `A/`; other settings are accepted with `OK`.
