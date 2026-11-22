@@ -7,6 +7,8 @@ final class EmulatorView: NSView {
     var keyMapper: KeyMapper?
     var onFileDrop: ((URL) -> Void)?
     private let colorSpace = CGColorSpaceCreateDeviceRGB()
+    /// Part of the 384×272 VIC-II frame to show (lets the user trim the border).
+    var crop = CGRect(x: 0, y: 0, width: VICII.screenWidth, height: VICII.screenHeight)
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -34,7 +36,7 @@ final class EmulatorView: NSView {
                            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue),
                            provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)
         }
-        layer?.contents = image
+        layer?.contents = image?.cropping(to: crop)
     }
 
     override func keyDown(with event: NSEvent) {

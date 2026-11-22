@@ -47,6 +47,7 @@ C64_SLOW_TESTS=1 swift test -c release -Xswiftc -enable-testing --filter testFor
 | Numpad 8/2/4/6, 0 or Right Option | Joystick (port 2 by default, ⌘K swaps) |
 | ⌘V | Paste text as typing |
 | ⌘J | Warp mode |
+| ⌘1 / ⌘2 / ⌘3 | View: full border / small border / no border |
 | ⌘D / ⌘E / ⌘N | Attach / eject / create D64 in drive 8 |
 | ⌘L | Instant Load on/off (copies files straight from the disk image; directory, custom loaders still use the real drive) |
 | ⌘⇧D / ⌘⇧E / ⌘⇧N | Attach / eject / create D81 in drive 9 (1581) |

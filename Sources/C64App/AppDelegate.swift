@@ -26,6 +26,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var tapeURL: URL?
     var pendingOpen: URL?
     var fastLoadItem: NSMenuItem!
+    var borderItems: [NSMenuItem] = []
+
+    /// Border sizes: full PAL picture, a thin border, or just the 320×200 screen.
+    static let borderCrops: [(String, CGRect)] = [
+        ("Full Border", CGRect(x: 0, y: 0, width: 384, height: 272)),
+        ("Small Border", CGRect(x: 16, y: 20, width: 352, height: 232)),
+        ("No Border", CGRect(x: 32, y: 36, width: 320, height: 200)),
+    ]
     var diskWarpItem: NSMenuItem!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -58,6 +66,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.makeKeyAndOrderFront(nil)
         window.makeFirstResponder(view)
         window.setFrameAutosaveName("C64MainWindow")
+        applyBorder(UserDefaults.standard.integer(forKey: "BorderMode"))
 
         runner.onFrame = { [weak self] in self?.frameTick() }
         audio.start()
@@ -311,6 +320,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         sender.state = runner.warpWhileTape ? .on : .off
     }
 
+    // MARK: - Border
+
+    @objc func setBorder(_ sender: NSMenuItem) {
+        UserDefaults.standard.set(sender.tag, forKey: "BorderMode")
+        applyBorder(sender.tag)
+    }
+
+    /// Crops the picture and reshapes the window so the screen keeps its proportions.
+    private func applyBorder(_ mode: Int) {
+        let m = min(max(mode, 0), AppDelegate.borderCrops.count - 1)
+        let crop = AppDelegate.borderCrops[m].1
+        view.crop = crop
+        for item in borderItems { item.state = item.tag == m ? .on : .off }
+        let aspect = NSSize(width: crop.width * 0.94, height: crop.height)
+        window.contentAspectRatio = aspect
+        let width = window.contentLayoutRect.width
+        var frame = window.frame
+        let newHeight = width * aspect.height / aspect.width
+        let delta = newHeight - window.contentLayoutRect.height
+        frame.size.height += delta
+        frame.origin.y -= delta
+        window.setFrame(frame, display: true, animate: false)
+        view.refresh()
+    }
+
     // MARK: - Drive 9 (1581)
 
     /// Puts a D81 into the 1581 on device 9, creating the drive on first use.
@@ -534,6 +568,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             .separator(),
             tapeWarp,
         ])
+        borderItems = AppDelegate.borderCrops.enumerated().map { i, b in
+            let item = mi(b.0, #selector(setBorder(_:)), "\(i + 1)")
+            item.tag = i
+            return item
+        }
+        add("View", borderItems)
         let windowMenu = NSMenu(title: "Window")
         windowMenu.addItem(mi("Minimize", #selector(NSWindow.performMiniaturize(_:)), "m"))
         windowMenu.addItem(mi("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]))
