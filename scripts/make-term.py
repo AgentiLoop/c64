@@ -9,7 +9,7 @@ with all three modem interfaces:
   2 = Turbo232 at $DE00 (230,400 baud)
 The app writes the interface number to CONFIG_ADDRESS ($0810) after loading, before RUN.
 Received text is printed with the KERNAL screen editor (PETSCII colours and graphics work),
-the cursor blinks while idle, F3 downloads a file with XMODEM (checksum) to drive 8, F1 switches between PETSCII and ASCII/ANSI, and F7 hangs up (+++, ATH).
+the cursor blinks while idle, F3 downloads and F5 uploads a file with XMODEM (checksum) on drive 8, F1 switches between PETSCII and ASCII/ANSI, and F7 hangs up (+++, ATH).
 ASCII/ANSI mode translates characters both ways (CP437 line drawing approximated), handles the ANSI
 colour codes (SGR), clear screen, cursor positioning and moves, answers the cursor position
 request (ESC[6n, how BBSes detect ANSI) and sends cursor keys as ANSI. Strings are written in normal ASCII:
@@ -114,7 +114,8 @@ HEAD, TAIL, STR = 0xFB, 0xFC, 0xFD      # free zero page: ring buffer indexes, s
 RXBUF = 0xC000                          # 256-byte receive ring buffer (SwiftLink)
 QTSW, INSRT = 0xD4, 0xD8               # screen editor quote mode / insert count
 PLOT = 0xFFF0
-F1, F3 = 0x85, 0x86
+F1, F3, F5 = 0x85, 0x86, 0x87
+CHRIN = 0xFFCF
 CLOSE, STOP, ST = 0xFFC3, 0xFFE1, 0x90
 SOH, EOT, ACK, NAK, CAN = 0x01, 0x04, 0x06, 0x15, 0x18
 BLK, HELD, FNAME = 0xC100, 0xC200, 0xC280   # XMODEM block (131 bytes), block waiting to be written, file name
@@ -232,6 +233,8 @@ def build():
     a("CMP", "imm", F1); a("BEQ", "rel", "toggle")
     a("CMP", "imm", F3); a("BNE", "rel", "notf3"); a("JMP", "abs", "download")
     a.label("notf3")
+    a("CMP", "imm", F5); a("BNE", "rel", "notf5"); a("JMP", "abs", "upload")
+    a.label("notf5")
     a("JSR", "abs", "sendkey"); a("JMP", "abs", "loop")
 
     a.label("toggle")                                             # F1: PETSCII <-> ASCII/ANSI
@@ -460,10 +463,110 @@ def build():
     a("LDA", "imm", 27); a("JSR", "abs", "xmit"); a("LDA", "imm", 0x5B); a("JSR", "abs", "xmit")
     a("LDX", "abs", "skx"); a("LDA", "absx", "curletters"); a("JMP", "abs", "xmit")
 
-    # F3: XMODEM (checksum, 128-byte blocks) download to a PRG file on drive 8. Each block is held
-    # back until the next one arrives, so the padding ($1A) at the end of the last block can be dropped.
     def prt(label):
         a("LDA", "imm", ("<", label)); a("LDY", "imm", (">", label)); a("JSR", "abs", "print")
+    # F5: XMODEM (checksum, 128-byte blocks) upload of a PRG file from drive 8. The last block is
+    # padded with $1A. Each block is read from disk before it is sent, so nothing waits on the drive.
+    a.label("upload")
+    a("JSR", "abs", "curoff")
+    prt("s_ul")
+    a("JSR", "abs", "readline")
+    a("LDA", "abs", "fnlen"); a("BNE", "rel", "u_name")
+    prt("s_cancel"); a("JMP", "abs", "loop")
+    a.label("u_name")                                             # append ",P,R"
+    a("LDX", "abs", "fnlen")
+    for ch in (0x2C, 0x50, 0x2C, 0x52):
+        a("LDA", "imm", ch); a("STA", "absx", FNAME); a("INX")
+    a("TXA"); a("LDX", "imm", FNAME & 0xFF); a("LDY", "imm", FNAME >> 8); a("JSR", "abs", SETNAM)
+    a("LDA", "imm", 3); a("LDX", "imm", 8); a("LDY", "imm", 2); a("JSR", "abs", SETLFS); a("JSR", "abs", OPEN)
+    a("PHP"); a("JSR", "abs", "rxon"); a("PLP")
+    a("BCS", "rel", "u_operr")
+    a("LDA", "imm", 0); a("STA", "abs", "eof"); a("STA", "abs", "aborted"); a("STA", "abs", "retries")
+    a("JSR", "abs", "fillblk")
+    a("LDA", "abs", "wlen"); a("BNE", "rel", "u_opok")
+    a.label("u_operr")
+    a("LDA", "imm", 3); a("JSR", "abs", CLOSE); a("JSR", "abs", "rxon")
+    prt("s_noread"); a("JMP", "abs", "loop")
+    a.label("u_opok")
+    prt("s_uwait")
+    a("LDA", "imm", 1); a("STA", "abs", "expect")
+    a.label("u_wait")                                             # receiver starts with NAK (up to ~60 s)
+    a("LDA", "imm", 255); a("STA", "abs", "tmo"); a("JSR", "abs", "getb"); a("BCC", "rel", "u_w2")
+    a("LDA", "abs", "aborted"); a("BNE", "rel", "u_failj")
+    a("INC", "abs", "retries"); a("LDA", "abs", "retries"); a("CMP", "imm", 15); a("BCC", "rel", "u_wait")
+    a.label("u_failj")
+    a("JMP", "abs", "u_fail")
+    a.label("u_w2")
+    a("CMP", "imm", NAK); a("BEQ", "rel", "u_go")
+    a("CMP", "imm", CAN); a("BNE", "rel", "u_wait"); a("JMP", "abs", "u_cancel")
+    a.label("u_go")
+    a("LDA", "imm", 0); a("STA", "abs", "retries")
+    a.label("u_send")                                             # SOH, n, 255-n, 128 bytes, checksum
+    a("LDA", "imm", SOH); a("JSR", "abs", "xmit")
+    a("LDA", "abs", "expect"); a("JSR", "abs", "xmit")
+    a("LDA", "abs", "expect"); a("EOR", "imm", 0xFF); a("JSR", "abs", "xmit")
+    a("LDA", "imm", 0); a("STA", "abs", "sum"); a("STA", "abs", "bidx")
+    a.label("u_s1")
+    a("LDX", "abs", "bidx"); a("LDA", "absx", HELD); a("PHA")
+    a("CLC"); a("ADC", "abs", "sum"); a("STA", "abs", "sum")
+    a("PLA"); a("JSR", "abs", "xmit")
+    a("INC", "abs", "bidx"); a("LDA", "abs", "bidx"); a("CMP", "imm", 128); a("BNE", "rel", "u_s1")
+    a("LDA", "abs", "sum"); a("JSR", "abs", "xmit")
+    a.label("u_reply")
+    a("LDA", "imm", 255); a("STA", "abs", "tmo"); a("JSR", "abs", "getb"); a("BCS", "rel", "u_retry")
+    a("CMP", "imm", ACK); a("BEQ", "rel", "u_acked")
+    a("CMP", "imm", NAK); a("BEQ", "rel", "u_retry")
+    a("CMP", "imm", CAN); a("BNE", "rel", "u_reply"); a("JMP", "abs", "u_cancel")
+    a.label("u_retry")
+    a("LDA", "abs", "aborted"); a("BNE", "rel", "u_failj")
+    a("INC", "abs", "retries"); a("LDA", "abs", "retries"); a("CMP", "imm", 10); a("BCS", "rel", "u_failj")
+    a("JMP", "abs", "u_send")
+    a.label("u_acked")
+    a("INC", "abs", "expect"); a("LDA", "imm", 0x23); a("JSR", "abs", "out")   # "#" per block
+    a("JSR", "abs", "fillblk")
+    a("LDA", "abs", "wlen"); a("BNE", "rel", "u_go")
+    a("LDA", "imm", 0); a("STA", "abs", "retries")
+    a.label("u_eot")                                              # end of file: EOT until ACKed
+    a("LDA", "imm", EOT); a("JSR", "abs", "xmit")
+    a("LDA", "imm", 255); a("STA", "abs", "tmo"); a("JSR", "abs", "getb"); a("BCS", "rel", "u_e2")
+    a("CMP", "imm", ACK); a("BEQ", "rel", "u_done")
+    a.label("u_e2")
+    a("LDA", "abs", "aborted"); a("BNE", "rel", "u_fail")
+    a("INC", "abs", "retries"); a("LDA", "abs", "retries"); a("CMP", "imm", 10); a("BCC", "rel", "u_eot")
+    a("JMP", "abs", "u_fail")
+    a.label("u_done")
+    a("LDA", "imm", 3); a("JSR", "abs", CLOSE); a("JSR", "abs", "rxon")
+    prt("s_udone"); a("JMP", "abs", "loop")
+    a.label("u_fail")
+    for _ in range(3):
+        a("LDA", "imm", CAN); a("JSR", "abs", "xmit")
+    a.label("u_cancel")
+    a("LDA", "imm", 3); a("JSR", "abs", CLOSE); a("JSR", "abs", "rxon")
+    prt("s_cancel"); a("JMP", "abs", "loop")
+
+    a.label("fillblk")                                            # next ≤128 file bytes into HELD, count in wlen
+    a("LDA", "imm", 0); a("STA", "abs", "widx"); a("STA", "abs", "wlen")
+    a("LDA", "abs", "eof"); a("BNE", "rel", "fb_r")
+    a("LDX", "imm", 3); a("JSR", "abs", CHKIN)
+    a.label("fb1")
+    a("JSR", "abs", CHRIN); a("LDX", "abs", "widx"); a("STA", "absx", HELD); a("INC", "abs", "widx")
+    a("LDA", "zp", ST); a("BNE", "rel", "fb_end")
+    a("LDA", "abs", "widx"); a("CMP", "imm", 128); a("BNE", "rel", "fb1"); a("BEQ", "rel", "fb_ok")
+    a.label("fb_end")                                             # EOF; a read error means that byte isn't data
+    a("AND", "imm", 0x02); a("BEQ", "rel", "fb_e2"); a("DEC", "abs", "widx")
+    a.label("fb_e2")
+    a("LDA", "imm", 1); a("STA", "abs", "eof")
+    a.label("fb_ok")
+    a("JSR", "abs", CLRCHN); a("JSR", "abs", "rxon")
+    a("LDX", "abs", "widx"); a("STX", "abs", "wlen")
+    a.label("fb_pad")
+    a("CPX", "imm", 128); a("BEQ", "rel", "fb_r")
+    a("LDA", "imm", 0x1A); a("STA", "absx", HELD); a("INX"); a("BNE", "rel", "fb_pad")
+    a.label("fb_r")
+    a("RTS")
+
+    # F3: XMODEM (checksum, 128-byte blocks) download to a PRG file on drive 8. Each block is held
+    # back until the next one arrives, so the padding ($1A) at the end of the last block can be dropped.
     a.label("download")
     a("JSR", "abs", "curoff")
     prt("s_dl")
@@ -628,7 +731,7 @@ def build():
     a.label("coltab"); a.byte(*ANSI_COLOURS)
     a.label("intab"); a.byte(*ascii_to_petscii())
     a.label("outtab"); a.byte(*petscii_to_ascii())
-    for v in ("expect", "held", "retries", "aborted", "tmo", "tend", "bidx", "widx", "wlen", "fnlen"):
+    for v in ("expect", "held", "retries", "aborted", "tmo", "tend", "bidx", "widx", "wlen", "fnlen", "eof", "sum"):
         a.label(v); a.byte(0)
     a.label("ridbs"); a.byte(0)
     a.label("tmp"); a.byte(0)
@@ -641,7 +744,11 @@ def build():
     a.label("s_up"); a.text("User Port, 1200 baud\r")
     a.label("s_sl"); a.text("SwiftLink $DE00, 38400 baud\r")
     a.label("s_tb"); a.text("Turbo232 $DE00, 230400 baud\r")
-    a.label("s_help"); a.text("Dial: atdt host:port  (or use the Mac's\rModem menu).  F1 ASCII/ANSI,\rF3 download (XMODEM to drive 8), F7 hangs up.\r\r")
+    a.label("s_help"); a.text("Dial: atdt host:port  (or use the Mac's\rModem menu).  F1 ASCII/ANSI,\rF3/F5 XMODEM download/upload (drive 8),\rF7 hangs up.\r\r")
+    a.label("s_ul"); a.text("\rXMODEM upload, file name: ")
+    a.label("s_uwait"); a.text("Start the download on the BBS now (STOP cancels).\r")
+    a.label("s_udone"); a.text("\rUpload complete.\r")
+    a.label("s_noread"); a.text("\rCan't read the file on drive 8.\r")
     a.label("s_dl"); a.text("\rXMODEM download, file name: ")
     a.label("s_wait"); a.text("Start the upload now (STOP cancels).\r")
     a.label("s_done"); a.text("\rDownload complete.\r")

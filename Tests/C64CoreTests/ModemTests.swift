@@ -194,4 +194,65 @@ final class ModemTests: XCTestCase {
 
     func testXMODEMDownloadSwiftLink() throws { try xmodemDownload(.swiftLink, frames: 6000) }
     func testXMODEMDownloadUserPort() throws { try xmodemDownload(.userPort, frames: 9000) }
+    /// F5 uploads a PRG from drive 8 with XMODEM (checksum); the "BBS" rejects one block once.
+    func xmodemUpload(_ port: C64.ModemPort, frames: Int) throws {
+        let (c64, modem) = try makeMachine(port)
+        guard let drive = c64.drive8 else { throw XCTSkip("1541 ROM not installed") }
+        let file: [UInt8] = [0x01, 0x08] + (0..<298).map { UInt8(truncatingIfNeeded: $0 &* 5 &+ 1) }
+        let d64 = D64Image.blank(name: "UPLOADS", id: "01")
+        XCTAssertTrue(d64.addFile(name: "UPFILE", contents: file))
+        drive.insert(GCRDisk(d64: d64))
+        XCTAssertTrue(run(c64, until: "OK"), screen(c64))
+        modem.dial(host: "bbs.example.com", port: 6400)
+        modem.connected()
+        for _ in 0..<30 { c64.runFrame() }
+
+        var incoming: [UInt8] = [], received: [UInt8] = [], expected: UInt8 = 1
+        var rejected = false, finished = false, badBlocks = 0
+        modem.onSend = { byte in
+            if incoming.isEmpty && byte == 0x04 { finished = true; modem.receive([0x06]); return }
+            incoming.append(byte)
+            guard incoming.count == 132 else { return }
+            let block = incoming
+            incoming = []
+            let data = Array(block[3..<131])
+            guard block[0] == 0x01, block[1] == expected, block[2] == ~expected,
+                  data.reduce(UInt8(0), &+) == block[131] else { badBlocks += 1; modem.receive([0x15]); return }
+            if expected == 2 && !rejected { rejected = true; modem.receive([0x15]); return }
+            received += data
+            expected &+= 1
+            modem.receive([0x06])
+        }
+
+        c64.setKey(.f5, pressed: true)
+        for _ in 0..<4 { c64.runFrame() }
+        c64.setKey(.f5, pressed: false)
+        XCTAssertTrue(run(c64, until: "FILE NAME"), screen(c64))
+        c64.queueTyping("upfile\n")
+        XCTAssertTrue(run(c64, until: "ON THE"), screen(c64))   // "Start the download on the BBS now"
+        modem.receive([0x15])                                   // the receiver starts
+        XCTAssertTrue(run(c64, until: "COMPLETE", frames: frames), screen(c64))
+        XCTAssertTrue(finished)
+        XCTAssertTrue(rejected)
+        XCTAssertEqual(badBlocks, 0)
+        XCTAssertEqual(received.count, 384)
+        XCTAssertEqual(Array(received.prefix(file.count)), file)
+        XCTAssertEqual(Array(received.dropFirst(file.count)), [UInt8](repeating: 0x1A, count: 384 - file.count))
+    }
+
+    func testXMODEMUploadSwiftLink() throws { try xmodemUpload(.swiftLink, frames: 6000) }
+    func testXMODEMUploadUserPort() throws { try xmodemUpload(.userPort, frames: 9000) }
+
+    func testXMODEMUploadMissingFile() throws {
+        let (c64, _) = try makeMachine(.swiftLink)
+        guard let drive = c64.drive8 else { throw XCTSkip("1541 ROM not installed") }
+        drive.insert(GCRDisk(d64: D64Image.blank(name: "EMPTY", id: "01")))
+        XCTAssertTrue(run(c64, until: "OK"), screen(c64))
+        c64.setKey(.f5, pressed: true)
+        for _ in 0..<4 { c64.runFrame() }
+        c64.setKey(.f5, pressed: false)
+        XCTAssertTrue(run(c64, until: "FILE NAME"), screen(c64))
+        c64.queueTyping("nothere\n")
+        XCTAssertTrue(run(c64, until: "READ THE FILE", frames: 3000), screen(c64))
+    }
 }
