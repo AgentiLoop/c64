@@ -1,5 +1,7 @@
 # C64 — a Commodore 64 emulator for macOS
 
+## Created by Todd Bruss
+
 Native Swift/AppKit emulator of a Commodore 64 (PAL or NTSC), with true emulation of the 1541
 and 1581 disk drives and the Datasette. The only dependency is [AutoUpdateKit](https://github.com/AgentiLoop/AutoUpdateKit),
 which keeps the app up to date from GitHub releases.
