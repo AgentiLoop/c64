@@ -1,6 +1,22 @@
 # C64 — a Commodore 64 emulator for macOS
 
-Native Swift/AppKit emulator of a PAL Commodore 64.
+Native Swift/AppKit emulator of a Commodore 64 (PAL or NTSC), with true emulation of the 1541
+and 1581 disk drives and the Datasette. No third-party dependencies.
+
+**Website:** https://c64.xcf.ai · **Download:** [latest release](https://github.com/AgentiLoop/c64/releases/latest) · Built with [AgentiLoop Agent!](https://agentiloop.ai)
+
+![C64 running the classic 10 PRINT maze](site/public/screenshot.jpg)
+
+## Quick start
+
+1. Download `C64.app.zip` from the [releases page](https://github.com/AgentiLoop/c64/releases/latest),
+   or build it yourself (see [Build & run](#build--run)). The app is ad-hoc signed: the first time,
+   right-click it and choose **Open**.
+2. Supply the Commodore ROMs (see [ROMs](#roms)).
+3. Drop a `.d64`, `.d81`, `.prg`, `.t64` or `.tap` on the window, or use the Drive and Tape menus.
+   Disks autostart with `LOAD"*",8,1` + `RUN`.
+
+Requires macOS 13 or later.
 
 ## Status
 
@@ -54,3 +70,12 @@ C64_SLOW_TESTS=1 swift test -c release -Xswiftc -enable-testing --filter testFor
 | ⌘⇧D / ⌘⇧E / ⌘⇧N | Attach / eject / create D81 in drive 9 (1581) |
 | ⌘T / ⌘⇧T | Insert TAP / new blank TAP |
 | ⌘⌥1–4 | Tape play / record / stop / rewind |
+
+## License
+
+MIT, see [LICENSE](LICENSE). Commodore ROMs and game software are not included and remain the
+property of their owners.
+
+## Website
+
+`site/` is the source of https://c64.xcf.ai (static Cloudflare Worker assets): `cd site && npx wrangler deploy`.

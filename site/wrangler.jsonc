@@ -1,0 +1,7 @@
+{
+  "$schema": "https://unpkg.com/wrangler/config-schema.json",
+  "name": "c64-xcf-ai",
+  "compatibility_date": "2025-09-01",
+  "routes": [{ "pattern": "c64.xcf.ai", "custom_domain": true }],
+  "assets": { "directory": "./public" }
+}

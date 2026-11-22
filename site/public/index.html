@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>C64 — a Commodore 64 emulator for macOS</title>
+<meta name="description" content="A native Swift/AppKit Commodore 64 emulator for macOS: cycle-exact 6510, VIC-II, SID, true 1541 and 1581 drive emulation, Datasette, instant loading. Free and open source.">
+<link rel="canonical" href="https://c64.xcf.ai/">
+<meta property="og:title" content="C64 — a Commodore 64 emulator for macOS">
+<meta property="og:description" content="Native Swift/AppKit C64 emulator with true 1541/1581 drive emulation. Free and open source.">
+<meta property="og:image" content="https://c64.xcf.ai/screenshot.jpg">
+<meta property="og:url" content="https://c64.xcf.ai/">
+<meta name="twitter:card" content="summary_large_image">
+<style>
+  :root { --c64-blue: #352879; --c64-light: #6c5eb5; --text: #e8e6ff; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--c64-light); color: var(--text);
+         font: 17px/1.55 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; }
+  .screen { max-width: 980px; margin: 32px auto; padding: 40px 48px; background: var(--c64-blue);
+            border-radius: 6px; box-shadow: 0 10px 40px rgba(0,0,0,.35); }
+  .mono { font-family: "C64 Pro Mono", ui-monospace, Menlo, monospace; letter-spacing: .02em; }
+  h1 { font-size: 2.3rem; margin: 0 0 4px; }
+  h2 { font-size: 1.3rem; margin: 36px 0 10px; color: #a5a0ff; }
+  .boot { color: #a5a0ff; margin: 0 0 24px; white-space: pre-wrap; }
+  a { color: #fff; }
+  img.shot { width: 100%; height: auto; border-radius: 4px; display: block; margin: 20px 0; }
+  .buttons { display: flex; gap: 12px; flex-wrap: wrap; margin: 20px 0; }
+  .btn { display: inline-block; padding: 11px 20px; border-radius: 4px; text-decoration: none;
+         background: #a5a0ff; color: var(--c64-blue); font-weight: 600; }
+  .btn.alt { background: transparent; color: #fff; border: 2px solid #a5a0ff; }
+  table { width: 100%; border-collapse: collapse; font-size: .95rem; }
+  td, th { text-align: left; vertical-align: top; padding: 7px 10px; border-bottom: 1px solid rgba(165,160,255,.25); }
+  th { color: #a5a0ff; white-space: nowrap; }
+  code, pre { font-family: ui-monospace, Menlo, monospace; font-size: .9rem; }
+  pre { background: rgba(0,0,0,.25); padding: 14px 16px; border-radius: 4px; overflow-x: auto; }
+  .cursor { display: inline-block; width: .6em; height: 1em; background: var(--text); vertical-align: -2px;
+            animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  footer { margin-top: 40px; font-size: .85rem; color: #a5a0ff; }
+  @media (max-width: 640px) { .screen { margin: 0; padding: 24px 18px; border-radius: 0; } h1 { font-size: 1.7rem; } }
+</style>
+</head>
+<body>
+<main class="screen">
+  <p class="boot mono">    **** COMMODORE 64 BASIC V2 ****
+ 64K RAM SYSTEM  38911 BASIC BYTES FREE
+
+READY.
+<span class="cursor"></span></p>
+
+  <h1>C64 for macOS</h1>
+  <p>A native Swift/AppKit Commodore 64 emulator. Cycle-exact CPU and video, a real SID, and true
+     emulation of the 1541 and 1581 disk drives running their original DOS ROMs. Free and open source.</p>
+
+  <div class="buttons">
+    <a class="btn" href="https://github.com/AgentiLoop/c64/releases/latest">Download for Mac</a>
+    <a class="btn alt" href="https://github.com/AgentiLoop/c64">Source on GitHub</a>
+  </div>
+
+  <img class="shot" src="screenshot.jpg" alt="The C64 app running the classic 10 PRINT maze" width="1200" height="832">
+
+  <h2>What's emulated</h2>
+  <table>
+    <tr><th>6510 CPU</th><td>Cycle-exact bus accesses, all documented and undocumented opcodes; passes Klaus Dormann's functional test.</td></tr>
+    <tr><th>VIC-II</th><td>Cycle-stepped: badlines, sprite DMA, border flip-flops, raster IRQ, all text and bitmap modes, sprite collisions.</td></tr>
+    <tr><th>SID 6581</th><td>3 voices, all waveforms, sync/ring, ADSR with real rate tables, resonant multimode filter, digis.</td></tr>
+    <tr><th>PAL / NTSC</th><td>6569 (50 Hz) or 6567R8 (60 Hz); CPU, SID pitch, CIA clocks and drive timing follow.</td></tr>
+    <tr><th>1541 drive</th><td>Drive 6502 running the original DOS ROM, two VIA 6522s, stepper head, GCR at the correct zone speeds. Reads and writes, so fast loaders and copy protection behave like the real thing.</td></tr>
+    <tr><th>1581 drive</th><td>Device 9: 2 MHz 6502, 8520 CIA and WD1772 controller with the original 1581 DOS; D81 images, including formatting.</td></tr>
+    <tr><th>Datasette</th><td>TAP playback and recording at cycle precision, with automatic warp while the motor runs.</td></tr>
+    <tr><th>Fast loading</th><td>Instant Load copies KERNAL loads straight from the disk image; automatic warp while a drive motor runs.</td></tr>
+    <tr><th>Media</th><td>D64, D81, PRG, T64 and TAP. Drag a file onto the window and it autostarts. Changes are written back to the image.</td></tr>
+  </table>
+
+  <h2>Getting started</h2>
+  <p>Download <code>C64.app.zip</code> from the releases page, unzip it, and right-click &rarr; <strong>Open</strong> the first time
+     (the app is ad-hoc signed). Requires macOS 13 or later.</p>
+  <p>The Commodore ROMs are copyrighted and not included. On first launch the app looks in
+     <code>~/Library/Application Support/C64Emu/ROMs</code> and in a VICE installation, or asks you for a folder with
+     <code>basic</code>, <code>kernal</code> and <code>chargen</code> ROM files (and optionally the 1541/1581 DOS ROMs).</p>
+  <p>Or build from source:</p>
+<pre>git clone https://github.com/AgentiLoop/c64.git
+cd c64
+./scripts/make-app.sh
+open build/C64.app</pre>
+
+  <h2>Keys</h2>
+  <table>
+    <tr><th>Esc</th><td>RUN/STOP</td></tr>
+    <tr><th>Page Up</th><td>RESTORE</td></tr>
+    <tr><th>Left Option</th><td>C=</td></tr>
+    <tr><th>Numpad 8/2/4/6 + 0</th><td>Joystick (port 2, &#8984;K swaps ports)</td></tr>
+    <tr><th>&#8984;V</th><td>Paste text as typing</td></tr>
+    <tr><th>&#8984;J</th><td>Warp mode</td></tr>
+    <tr><th>&#8984;D / &#8984;E</th><td>Attach / eject a disk in drive 8</td></tr>
+    <tr><th>&#8984;L</th><td>Instant Load on/off</td></tr>
+  </table>
+
+  <footer>
+    Made with <a href="https://agentiloop.ai">AgentiLoop Agent!</a> &middot; MIT licensed &middot;
+    Commodore 64 is a trademark of its respective owner; ROMs and games are not included.
+  </footer>
+</main>
+</body>
+</html>
