@@ -44,6 +44,9 @@
   table { width: 100%; border-collapse: collapse; font-size: .95rem; }
   td, th { text-align: left; vertical-align: top; padding: 7px 10px; border-bottom: 1px solid rgba(165,160,255,.25); }
   th { color: #a5a0ff; white-space: nowrap; }
+  .keys tr.group td { padding-top: 22px; color: #fff; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+                      font-size: .8rem; border-bottom: 2px solid rgba(165,160,255,.5); }
+  .keys tr.group:first-child td { padding-top: 7px; }
   code, pre { font-family: ui-monospace, Menlo, monospace; font-size: .9rem; }
   pre { background: rgba(0,0,0,.25); padding: 14px 16px; border-radius: 4px; overflow-x: auto; }
   .code { position: relative; }
@@ -120,16 +123,33 @@ open build/C64.app</pre>
   </div>
 
   <h2>Keys</h2>
-  <table>
+  <table class="keys">
+    <tr class="group"><td colspan="2">Keyboard</td></tr>
     <tr><th>Esc</th><td>RUN/STOP</td></tr>
     <tr><th>Page Up</th><td>RESTORE</td></tr>
     <tr><th>Left Option</th><td>C=</td></tr>
-    <tr><th>Numpad 8/2/4/6 + 0</th><td>Joystick (port 2, &#8984;K swaps ports)</td></tr>
+    <tr><th>Tab / Control</th><td>CTRL</td></tr>
+    <tr><th>Home</th><td>CLR/HOME</td></tr>
+    <tr><th>F1&ndash;F8</th><td>F1&ndash;F8</td></tr>
+    <tr><th>Backspace / Fwd Delete</th><td>DEL / INST</td></tr>
     <tr><th>&#8984;V</th><td>Paste text as typing</td></tr>
+
+    <tr class="group"><td colspan="2">Joystick</td></tr>
+    <tr><th>Numpad 8/2/4/6, 0 or Right Option</th><td>Joystick (port 2 by default, &#8984;K swaps ports)</td></tr>
+
+    <tr class="group"><td colspan="2">Machine &amp; view</td></tr>
     <tr><th>&#8984;J</th><td>Warp mode</td></tr>
-    <tr><th>&#8984;D / &#8984;E</th><td>Attach / eject a disk in drive 8</td></tr>
-    <tr><th>&#8984;L</th><td>Instant Load on/off</td></tr>
     <tr><th>&#8984;P</th><td>Pause / resume (handy for screenshots)</td></tr>
+    <tr><th>&#8984;1 / &#8984;2 / &#8984;3</th><td>Full border / small border / no border</td></tr>
+
+    <tr class="group"><td colspan="2">Disk drives</td></tr>
+    <tr><th>&#8984;D / &#8984;E / &#8984;N</th><td>Attach / eject / create a D64 in drive 8 (1541)</td></tr>
+    <tr><th>&#8984;&#8679;D / &#8984;&#8679;E / &#8984;&#8679;N</th><td>Attach / eject / create a D81 in drive 9 (1581)</td></tr>
+    <tr><th>&#8984;L</th><td>Instant Load on/off (copies files straight from the disk image; the directory and custom loaders still use the real drive)</td></tr>
+
+    <tr class="group"><td colspan="2">Datasette</td></tr>
+    <tr><th>&#8984;T / &#8984;&#8679;T</th><td>Insert a TAP / new blank TAP</td></tr>
+    <tr><th>&#8984;&#8997;1&ndash;4</th><td>Tape play / record / stop / rewind</td></tr>
   </table>
 
   <footer>
