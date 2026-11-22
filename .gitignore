@@ -1,0 +1,9 @@
+.build/
+.swiftpm/
+build/
+*.xcodeproj/xcuserdata/
+.DS_Store
+.agent/tabs/
+# Commodore ROM images are copyrighted — never commit them.
+ROMs/
+*.bin
