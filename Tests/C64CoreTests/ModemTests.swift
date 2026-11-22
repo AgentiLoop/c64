@@ -142,4 +142,56 @@ final class ModemTests: XCTestCase {
         for _ in 0..<30 where sent.count < 8 { c64.runFrame() }
         XCTAssertEqual(String(decoding: sent, as: UTF8.self), "\u{1B}[12;34R")
     }
+    /// F3 downloads a file with XMODEM (checksum) from the "BBS" to a PRG file on drive 8,
+    /// recovering from a corrupted block and dropping the $1A padding of the last block.
+    func xmodemDownload(_ port: C64.ModemPort, frames: Int) throws {
+        let (c64, modem) = try makeMachine(port)
+        guard let drive = c64.drive8 else { throw XCTSkip("1541 ROM not installed") }
+        let disk = GCRDisk(d64: D64Image.blank(name: "DOWNLOADS", id: "01"))
+        drive.insert(disk)
+        XCTAssertTrue(run(c64, until: "OK"), screen(c64))
+        modem.dial(host: "bbs.example.com", port: 6400)
+        modem.connected()
+        for _ in 0..<30 { c64.runFrame() }
+
+        let file: [UInt8] = [0x01, 0x08] + (0..<298).map { UInt8(truncatingIfNeeded: $0 &* 7 &+ 3) }
+        var blocks: [[UInt8]] = stride(from: 0, to: file.count, by: 128).map { Array(file[$0..<min($0 + 128, file.count)]) }
+        blocks[blocks.count - 1] += [UInt8](repeating: 0x1A, count: 128 - blocks[blocks.count - 1].count)
+        var current = 0, started = false, eotSent = false, finished = false, corrupt = true, naks = 0
+        func send(_ i: Int) {
+            let n = UInt8(i + 1)
+            var sum = blocks[i].reduce(UInt8(0), &+)
+            if corrupt && i == 1 { sum = ~sum; corrupt = false }
+            modem.receive([0x01, n, ~n] + blocks[i] + [sum])
+        }
+        modem.onSend = { byte in
+            switch byte {
+            case 0x15:
+                naks += 1
+                if !started { started = true; send(0) } else if eotSent { modem.receive([0x04]) } else { send(current) }
+            case 0x06:
+                if eotSent { finished = true; return }
+                current += 1
+                if current < blocks.count { send(current) } else { eotSent = true; modem.receive([0x04]) }
+            default:
+                break
+            }
+        }
+
+        c64.setKey(.f3, pressed: true)
+        for _ in 0..<4 { c64.runFrame() }
+        c64.setKey(.f3, pressed: false)
+        XCTAssertTrue(run(c64, until: "FILE NAME"), screen(c64))
+        c64.queueTyping("testfile\n")
+        XCTAssertTrue(run(c64, until: "COMPLETE", frames: frames), screen(c64))
+        XCTAssertTrue(finished)
+        XCTAssertEqual(naks, 2)   // the start and the corrupted block
+        let img = disk.toD64()
+        let entry = img.directory().first { $0.name == "TESTFILE" }
+        XCTAssertEqual(entry?.type, 0x82, "\(img.directory())")
+        if let e = entry { XCTAssertEqual(img.readFile(e), file) }
+    }
+
+    func testXMODEMDownloadSwiftLink() throws { try xmodemDownload(.swiftLink, frames: 6000) }
+    func testXMODEMDownloadUserPort() throws { try xmodemDownload(.userPort, frames: 9000) }
 }

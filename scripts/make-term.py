@@ -9,7 +9,7 @@ with all three modem interfaces:
   2 = Turbo232 at $DE00 (230,400 baud)
 The app writes the interface number to CONFIG_ADDRESS ($0810) after loading, before RUN.
 Received text is printed with the KERNAL screen editor (PETSCII colours and graphics work),
-the cursor blinks while idle, F1 switches between PETSCII and ASCII/ANSI, and F7 hangs up (+++, ATH).
+the cursor blinks while idle, F3 downloads a file with XMODEM (checksum) to drive 8, F1 switches between PETSCII and ASCII/ANSI, and F7 hangs up (+++, ATH).
 ASCII/ANSI mode translates characters both ways (CP437 line drawing approximated), handles the ANSI
 colour codes (SGR), clear screen, cursor positioning and moves, answers the cursor position
 request (ESC[6n, how BBSes detect ANSI) and sends cursor keys as ANSI. Strings are written in normal ASCII:
@@ -37,6 +37,7 @@ OPS = {
     ("ADC", "abs"): 0x6D, ("SBC", "imm"): 0xE9, ("EOR", "imm"): 0x49,
     ("CPX", "imm"): 0xE0, ("CPX", "abs"): 0xEC, ("STX", "abs"): 0x8E, ("CMP", "absx"): 0xDD,
     ("BPL", "rel"): 0x10, ("BMI", "rel"): 0x30, ("INC", "abs"): 0xEE, ("INX", "imp"): 0xE8, ("TYA", "imp"): 0x98,
+    ("DEC", "abs"): 0xCE, ("PHP", "imp"): 0x08, ("PLP", "imp"): 0x28, ("ADC", "absx"): 0x7D,
 }
 ONE_BYTE = {"imm", "zp", "indy", "rel"}
 
@@ -113,7 +114,10 @@ HEAD, TAIL, STR = 0xFB, 0xFC, 0xFD      # free zero page: ring buffer indexes, s
 RXBUF = 0xC000                          # 256-byte receive ring buffer (SwiftLink)
 QTSW, INSRT = 0xD4, 0xD8               # screen editor quote mode / insert count
 PLOT = 0xFFF0
-F1 = 0x85
+F1, F3 = 0x85, 0x86
+CLOSE, STOP, ST = 0xFFC3, 0xFFE1, 0x90
+SOH, EOT, ACK, NAK, CAN = 0x01, 0x04, 0x06, 0x15, 0x18
+BLK, HELD, FNAME = 0xC100, 0xC200, 0xC280   # XMODEM block (131 bytes), block waiting to be written, file name
 BLNSW, GDBLN, BLNON, PNT, PNTR, USER, GDCOL, JIFFY = 0xCC, 0xCE, 0xCF, 0xD1, 0xD3, 0xF3, 0x0287, 0xA2
 CMD_ON, CMD_HOLD = 0x09, 0x01           # DTR + receive IRQ, with / without RTS
 F7 = 0x88
@@ -226,6 +230,8 @@ def build():
     a("JSR", "abs", GETIN); a("BEQ", "rel", "loop")
     a("CMP", "imm", F7); a("BEQ", "rel", "hangup")
     a("CMP", "imm", F1); a("BEQ", "rel", "toggle")
+    a("CMP", "imm", F3); a("BNE", "rel", "notf3"); a("JMP", "abs", "download")
+    a.label("notf3")
     a("JSR", "abs", "sendkey"); a("JMP", "abs", "loop")
 
     a.label("toggle")                                             # F1: PETSCII <-> ASCII/ANSI
@@ -260,8 +266,13 @@ def build():
     # recv: C clear and the byte in A, or C set when nothing is waiting.
     a.label("recv")
     a("LDA", "abs", "iface"); a("BNE", "rel", "srecv")
+    # GETIN returns 0 both for "nothing" and for a received $00: a real byte moves the buffer start (RIDBS).
+    # (GETIN has to be called even when the buffer is empty: it switches the KERNAL receiver on.)
+    a("LDA", "abs", 0x029C); a("STA", "abs", "ridbs")
     a("LDX", "imm", 2); a("JSR", "abs", CHKIN); a("JSR", "abs", GETIN)
-    a("PHA"); a("JSR", "abs", CLRCHN); a("PLA"); a("BEQ", "rel", "none")
+    a("PHA"); a("JSR", "abs", CLRCHN); a("PLA"); a("BNE", "rel", "rgot")
+    a("LDX", "abs", 0x029C); a("CPX", "abs", "ridbs"); a("BEQ", "rel", "none")
+    a.label("rgot")
     a("CLC"); a("RTS")
     a.label("none")
     a("SEC"); a("RTS")
@@ -449,6 +460,149 @@ def build():
     a("LDA", "imm", 27); a("JSR", "abs", "xmit"); a("LDA", "imm", 0x5B); a("JSR", "abs", "xmit")
     a("LDX", "abs", "skx"); a("LDA", "absx", "curletters"); a("JMP", "abs", "xmit")
 
+    # F3: XMODEM (checksum, 128-byte blocks) download to a PRG file on drive 8. Each block is held
+    # back until the next one arrives, so the padding ($1A) at the end of the last block can be dropped.
+    def prt(label):
+        a("LDA", "imm", ("<", label)); a("LDY", "imm", (">", label)); a("JSR", "abs", "print")
+    a.label("download")
+    a("JSR", "abs", "curoff")
+    prt("s_dl")
+    a("JSR", "abs", "readline")
+    a("LDA", "abs", "fnlen"); a("BNE", "rel", "x_open")
+    prt("s_cancel"); a("JMP", "abs", "loop")
+    a.label("x_open")
+    a("LDA", "abs", "fnlen"); a("LDX", "imm", FNAME & 0xFF); a("LDY", "imm", FNAME >> 8); a("JSR", "abs", SETNAM)
+    a("LDA", "imm", 3); a("LDX", "imm", 8); a("LDY", "imm", 1); a("JSR", "abs", SETLFS); a("JSR", "abs", OPEN)
+    a("PHP"); a("JSR", "abs", "rxon"); a("PLP")
+    a("BCS", "rel", "x_operr")
+    a("LDA", "zp", ST); a("BPL", "rel", "x_opok")
+    a.label("x_operr")
+    a("LDA", "imm", 3); a("JSR", "abs", CLOSE); a("JSR", "abs", "rxon")
+    prt("s_nodrive"); a("JMP", "abs", "loop")
+    a.label("x_opok")
+    prt("s_wait")
+    a("LDA", "imm", 1); a("STA", "abs", "expect")
+    a("LDA", "imm", 0); a("STA", "abs", "held"); a("STA", "abs", "retries"); a("STA", "abs", "aborted")
+    a("JSR", "abs", "purge")
+    a("LDA", "imm", NAK); a("JSR", "abs", "xmit")
+    a.label("x_next")
+    a("LDA", "abs", "aborted"); a("BEQ", "rel", "x_n1"); a("JMP", "abs", "x_fail")
+    a.label("x_n1")
+    a("LDA", "imm", 180); a("STA", "abs", "tmo"); a("JSR", "abs", "getb"); a("BCC", "rel", "x_got")
+    a("LDA", "abs", "aborted"); a("BEQ", "rel", "x_n2"); a("JMP", "abs", "x_fail")
+    a.label("x_n2")
+    a("INC", "abs", "retries"); a("LDA", "abs", "retries"); a("CMP", "imm", 10); a("BCC", "rel", "x_n3"); a("JMP", "abs", "x_fail")
+    a.label("x_n3")
+    a("LDA", "imm", NAK); a("JSR", "abs", "xmit"); a("JMP", "abs", "x_next")
+    a.label("x_got")
+    a("CMP", "imm", SOH); a("BEQ", "rel", "x_block")
+    a("CMP", "imm", EOT); a("BNE", "rel", "x_g2"); a("JMP", "abs", "x_eot")
+    a.label("x_g2")
+    a("CMP", "imm", CAN); a("BNE", "rel", "x_next"); a("JMP", "abs", "x_cancel")
+    a.label("x_block")
+    a("LDA", "imm", 60); a("STA", "abs", "tmo"); a("LDA", "imm", 0); a("STA", "abs", "bidx")
+    a.label("x_rd")
+    a("JSR", "abs", "getb"); a("BCC", "rel", "x_rd2"); a("JMP", "abs", "x_bad")
+    a.label("x_rd2")
+    a("LDX", "abs", "bidx"); a("STA", "absx", BLK); a("INX"); a("STX", "abs", "bidx"); a("CPX", "imm", 131)
+    a("BNE", "rel", "x_rd")
+    a("LDA", "abs", BLK); a("CLC"); a("ADC", "abs", BLK + 1); a("CMP", "imm", 0xFF); a("BNE", "rel", "x_badj")
+    a("LDA", "imm", 0); a("LDX", "imm", 2)
+    a.label("x_sum")
+    a("CLC"); a("ADC", "absx", BLK); a("INX"); a("CPX", "imm", 130); a("BNE", "rel", "x_sum")
+    a("CMP", "abs", BLK + 130); a("BNE", "rel", "x_badj")
+    a("LDA", "abs", BLK); a("CMP", "abs", "expect"); a("BEQ", "rel", "x_new")
+    a("CLC"); a("ADC", "imm", 1); a("CMP", "abs", "expect"); a("BEQ", "rel", "x_ack")   # repeated block
+    a("JMP", "abs", "x_fail")
+    a.label("x_badj")
+    a("JMP", "abs", "x_bad")
+    a.label("x_new")
+    a("JSR", "abs", "flushheld")
+    a("LDX", "imm", 0)
+    a.label("x_cp")
+    a("LDA", "absx", BLK + 2); a("STA", "absx", HELD); a("INX"); a("CPX", "imm", 128); a("BNE", "rel", "x_cp")
+    a("LDA", "imm", 1); a("STA", "abs", "held")
+    a("INC", "abs", "expect"); a("LDA", "imm", 0); a("STA", "abs", "retries")
+    a("LDA", "imm", 0x23); a("JSR", "abs", "out")                # "#" per block
+    a.label("x_ack")
+    a("LDA", "imm", ACK); a("JSR", "abs", "xmit"); a("JMP", "abs", "x_next")
+    a.label("x_bad")
+    a("LDA", "abs", "aborted"); a("BEQ", "rel", "x_b1"); a("JMP", "abs", "x_fail")
+    a.label("x_b1")
+    a("JSR", "abs", "purge")
+    a("INC", "abs", "retries"); a("LDA", "abs", "retries"); a("CMP", "imm", 10); a("BCC", "rel", "x_b2"); a("JMP", "abs", "x_fail")
+    a.label("x_b2")
+    a("LDA", "imm", NAK); a("JSR", "abs", "xmit"); a("JMP", "abs", "x_next")
+    a.label("x_eot")
+    a("LDA", "imm", ACK); a("JSR", "abs", "xmit")
+    a("JSR", "abs", "flushlast")
+    a("LDA", "imm", 3); a("JSR", "abs", CLOSE); a("JSR", "abs", "rxon")
+    prt("s_done"); a("JMP", "abs", "loop")
+    a.label("x_fail")                                             # tell the sender to stop
+    for _ in range(3):
+        a("LDA", "imm", CAN); a("JSR", "abs", "xmit")
+    a.label("x_cancel")
+    a("LDA", "imm", 3); a("JSR", "abs", CLOSE); a("JSR", "abs", "rxon")
+    prt("s_cancel"); a("JMP", "abs", "loop")
+
+    a.label("flushheld")                                          # write the held block (128 bytes)
+    a("LDA", "abs", "held"); a("BEQ", "rel", "fh_r")
+    a("LDA", "imm", 128); a("STA", "abs", "wlen"); a("JMP", "abs", "writeheld")
+    a.label("fh_r")
+    a("RTS")
+    a.label("flushlast")                                          # write it without the trailing $1A padding
+    a("LDA", "abs", "held"); a("BEQ", "rel", "fh_r")
+    a("LDX", "imm", 128)
+    a.label("fl1")
+    a("LDA", "absx", HELD - 1); a("CMP", "imm", 0x1A); a("BNE", "rel", "fl2"); a("DEX"); a("BNE", "rel", "fl1")
+    a.label("fl2")
+    a("STX", "abs", "wlen")
+    a.label("writeheld")
+    a("LDA", "abs", "wlen"); a("BEQ", "rel", "fh_r")
+    a("LDX", "imm", 3); a("JSR", "abs", CHKOUT)
+    a("LDA", "imm", 0); a("STA", "abs", "widx")
+    a.label("wh1")
+    a("LDX", "abs", "widx"); a("LDA", "absx", HELD); a("JSR", "abs", CHROUT)
+    a("INC", "abs", "widx"); a("LDA", "abs", "widx"); a("CMP", "abs", "wlen"); a("BNE", "rel", "wh1")
+    a("JSR", "abs", CLRCHN); a("LDA", "imm", 0); a("STA", "abs", "held")
+    # Disk access switches KERNAL RS-232 receive off ($F0A4); switch it back on (user port only).
+    a.label("rxon")
+    a("LDA", "abs", "iface"); a("BNE", "rel", "rxr")
+    a("SEI"); a("JSR", "abs", 0xEF7E); a("CLI")                   # KERNAL: wait for the next start bit
+    a.label("rxr")
+    a("RTS")
+
+    a.label("getb")                                               # byte within `tmo` jiffies: C clear + A, else C set
+    a("LDA", "zp", JIFFY); a("CLC"); a("ADC", "abs", "tmo"); a("STA", "abs", "tend")
+    a.label("gb1")
+    a("JSR", "abs", "recv"); a("BCC", "rel", "gbr")
+    a("JSR", "abs", STOP); a("BNE", "rel", "gb2")
+    a("LDA", "imm", 1); a("STA", "abs", "aborted"); a("SEC"); a("RTS")
+    a.label("gb2")
+    a("LDA", "zp", JIFFY); a("CMP", "abs", "tend"); a("BNE", "rel", "gb1"); a("SEC")
+    a.label("gbr")
+    a("RTS")
+    a.label("purge")                                              # skip input until a second of quiet
+    a("LDA", "imm", 60); a("STA", "abs", "tmo")
+    a.label("pu1")
+    a("JSR", "abs", "getb"); a("BCC", "rel", "pu1"); a("RTS")
+
+    a.label("readline")                                           # file name from the keyboard (max 16)
+    a("LDA", "imm", 0); a("STA", "abs", "fnlen")
+    a.label("rl1")
+    a("LDA", "imm", 0); a("STA", "zp", BLNSW); a("JSR", "abs", GETIN); a("BEQ", "rel", "rl1")
+    a("PHA"); a("JSR", "abs", "curoff"); a("PLA")
+    a("CMP", "imm", 13); a("BEQ", "rel", "rl_done")
+    a("CMP", "imm", 0x14); a("BEQ", "rel", "rl_del")
+    a("CMP", "imm", 0x20); a("BCC", "rel", "rl1")
+    a("LDX", "abs", "fnlen"); a("CPX", "imm", 16); a("BCS", "rel", "rl1")
+    a("STA", "absx", FNAME); a("INC", "abs", "fnlen"); a("JSR", "abs", "out"); a("JMP", "abs", "rl1")
+    a.label("rl_del")
+    a("LDX", "abs", "fnlen"); a("BEQ", "rel", "rl1"); a("DEC", "abs", "fnlen")
+    a("LDA", "imm", 0x14); a("JSR", "abs", CHROUT); a("JMP", "abs", "rl1")
+    a.label("rl_done")
+    a("LDA", "imm", 13); a("JMP", "abs", CHROUT)
+
     a.label("print")
     a("STA", "zp", STR); a("STY", "zp", STR + 1)
     a("LDY", "imm", 0)
@@ -474,6 +628,9 @@ def build():
     a.label("coltab"); a.byte(*ANSI_COLOURS)
     a.label("intab"); a.byte(*ascii_to_petscii())
     a.label("outtab"); a.byte(*petscii_to_ascii())
+    for v in ("expect", "held", "retries", "aborted", "tmo", "tend", "bidx", "widx", "wlen", "fnlen"):
+        a.label(v); a.byte(0)
+    a.label("ridbs"); a.byte(0)
     a.label("tmp"); a.byte(0)
     a.label("paused"); a.byte(0)
     a.label("oldnmi"); a.byte(0x47); a.label("oldnmi1"); a.byte(0xFE)
@@ -484,7 +641,12 @@ def build():
     a.label("s_up"); a.text("User Port, 1200 baud\r")
     a.label("s_sl"); a.text("SwiftLink $DE00, 38400 baud\r")
     a.label("s_tb"); a.text("Turbo232 $DE00, 230400 baud\r")
-    a.label("s_help"); a.text("Dial: atdt host:port  (or use the Mac's\rModem menu).  F1 ASCII/ANSI, F7 hangs up.\r\r")
+    a.label("s_help"); a.text("Dial: atdt host:port  (or use the Mac's\rModem menu).  F1 ASCII/ANSI,\rF3 download (XMODEM to drive 8), F7 hangs up.\r\r")
+    a.label("s_dl"); a.text("\rXMODEM download, file name: ")
+    a.label("s_wait"); a.text("Start the upload now (STOP cancels).\r")
+    a.label("s_done"); a.text("\rDownload complete.\r")
+    a.label("s_cancel"); a.text("\rTransfer cancelled.\r")
+    a.label("s_nodrive"); a.text("\rCan't open the file on drive 8.\r")
     a.label("s_ascii"); a.text("\x0e\x9b\r(ASCII/ANSI mode, F1 = PETSCII)\r")
     a.label("s_pet"); a.text("\x05\r(PETSCII mode, F1 = ASCII/ANSI)\r")
     a.label("s_hang"); a.text("\r(hanging up...)\r")

@@ -74,6 +74,10 @@ plug into real C64s. Plenty of Commodore BBSes are still online: see the [BBS li
    screen, positions and moves the cursor, draws CP437 line graphics with the nearest PETSCII
    characters, answers the ANSI detection request (`ESC[6n`) and sends cursor keys as ANSI. Lines are
    40 columns wide.
+5. **F3** downloads a file with XMODEM (checksum, 128-byte blocks) to drive 8: type a file name,
+   then start the upload on the BBS. The file is saved as a PRG, bad blocks are requested again, the
+   `$1A` padding at the end is removed, and STOP cancels. Put a disk in drive 8 first
+   (Drive ▸ New Blank Disk…). Uploads are not supported yet.
 
 **Modem ▸ Interface** chooses where the modem is plugged in:
 
@@ -86,7 +90,7 @@ plug into real C64s. Plenty of Commodore BBSes are still online: see the [BBS li
 The built-in terminal has been tested live against The Oasis BBS on SwiftLink (38,400) and Turbo232
 (230,400). Other terminals that support these interfaces work too, e.g.
 [CCGMS Future](https://github.com/mist64/ccgmsterm) (F7 ▸ Modem Type "Swift / Turbo DE", Baud Rate 38400),
-which adds file transfers. The terminal's source is `scripts/make-term.py` (a small built-in 6502 assembler).
+which adds uploads and more transfer protocols (Punter, XMODEM-CRC/1K). The terminal's source is `scripts/make-term.py` (a small built-in 6502 assembler).
 
 * Commands: `ATD`/`ATDT host[:port]` (port 23 by default), `ATH`, `ATO`, `ATZ`, `ATE0`/`ATE1`, `ATI`,
   `A/`; other settings are accepted with `OK`.
