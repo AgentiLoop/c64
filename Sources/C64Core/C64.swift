@@ -41,7 +41,28 @@ public final class C64: CPUBus {
     public let iec = IECBus()
     /// Disk drive 8 (true 1541 emulation), if a drive ROM is available.
     public var drive8: Drive1541? {
-        didSet { iec.devices = drive8.map { [$0] } ?? [] }
+        didSet { updateIECDevices() }
+    }
+    /// Disk drive 9 (true 1581 emulation), created on demand by `attach1581()`.
+    public var drive9: Drive1581? {
+        didSet { updateIECDevices() }
+    }
+    var rom1581: [UInt8]?
+
+    func updateIECDevices() {
+        var d: [IECDevice] = []
+        if let d8 = drive8 { d.append(d8) }
+        if let d9 = drive9 { d.append(d9) }
+        iec.devices = d
+    }
+
+    /// Creates the 1581 on device 9 if its ROM is available (and not already present).
+    @discardableResult
+    public func attach1581() -> Drive1581? {
+        if let d = drive9 { return d }
+        guard let r = rom1581 else { return nil }
+        drive9 = Drive1581(rom: r, iec: iec, deviceNumber: 9)
+        return drive9
     }
     /// The Datasette on the cassette port.
     public let datasette = Datasette()
@@ -68,8 +89,9 @@ public final class C64: CPUBus {
         self.init(basic: roms.basic, kernal: roms.kernal, chargen: roms.chargen)
         if let r = roms.drive1541 {
             drive8 = Drive1541(rom: r, iec: iec)
-            iec.devices = [drive8!]   // didSet does not fire inside an initializer
         }
+        rom1581 = roms.drive1581
+        updateIECDevices()   // didSet does not fire inside an initializer
     }
 
     private func wire() {
@@ -104,6 +126,7 @@ public final class C64: CPUBus {
         cia2.reset()
         iec.reset()
         drive8?.reset()
+        drive9?.reset()
         cpu.reset()
         resetCycle = cycles
         typeQueue.removeAll()
@@ -132,6 +155,7 @@ public final class C64: CPUBus {
         sid.tick()
         for d in clockedDevices { d(self) }
         if let d = drive8 { d.clockC64Cycle() }
+        if let d = drive9 { d.clockC64Cycle() }
         if datasette.mode == .playing { datasette.tick(motor: cassetteMotor, cia: cia1) }
         cycles &+= 1
         todCounter += 1

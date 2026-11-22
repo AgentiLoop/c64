@@ -16,6 +16,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// The D64 file currently in drive 8 and its GCR disk (written back when changed).
     var diskURL: URL?
     var disk: GCRDisk?
+    /// The D81 file in drive 9 (1581) and its image.
+    var disk9URL: URL?
+    var disk9: D81Image?
     var baseTitle = "C64"
     var lastLED = false
     var lastTape = false
@@ -63,6 +66,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         saveTapeIfNeeded()   // needs the emulation thread still running
         runner?.stop()
         saveDiskIfNeeded()
+        saveDisk9IfNeeded()
     }
 
     func application(_ sender: NSApplication, openFile filename: String) -> Bool {
@@ -82,7 +86,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func frameTick() {
         view.refresh()
-        let led = runner.c64.drive8?.ledOn ?? false
+        let led = (runner.c64.drive8?.ledOn ?? false) || (runner.c64.drive9?.ledOn ?? false)
         let tape = runner.c64.datasette.mode != .stopped && runner.c64.cassetteMotor
         if led != lastLED || tape != lastTape {
             lastLED = led
@@ -187,6 +191,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 C64Autostart.ensureBooted(c64)
                 c64.queueTyping("LOAD\"*\",8,1\nRUN\n")
             }
+        case "d81":
+            guard let image = D81Image(data: bytes) else {
+                let alert = NSAlert()
+                alert.messageText = "Not a valid D81 image"
+                alert.informativeText = url.lastPathComponent
+                alert.runModal()
+                return
+            }
+            guard insertDisk9(image, url: url) else { return }
+            runner.perform { c64 in
+                C64Autostart.ensureBooted(c64)
+                c64.queueTyping("LOAD\"*\",9,1\nRUN\n")
+            }
         case "tap":
             guard let pulses = Datasette.parseTAP(bytes) else {
                 let alert = NSAlert()
@@ -286,6 +303,62 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func toggleTapeWarp(_ sender: NSMenuItem) {
         runner.warpWhileTape.toggle()
         sender.state = runner.warpWhileTape ? .on : .off
+    }
+
+    // MARK: - Drive 9 (1581)
+
+    /// Puts a D81 into the 1581 on device 9, creating the drive on first use.
+    @discardableResult
+    private func insertDisk9(_ image: D81Image, url: URL?) -> Bool {
+        guard ROMSet.load()?.drive1581 != nil else {
+            let alert = NSAlert()
+            alert.messageText = "1581 drive ROM not found"
+            alert.informativeText = "Put dos1581*.bin (32 KB) into \(ROMSet.userROMDirectory.path)."
+            alert.runModal()
+            return false
+        }
+        saveDisk9IfNeeded()
+        disk9 = image
+        disk9URL = url
+        runner.perform { c64 in
+            let wasNew = c64.drive9 == nil
+            c64.attach1581()?.insert(image)
+            // A freshly powered drive needs a moment to boot before the C64 talks to it.
+            if wasNew { for _ in 0..<50 { c64.runFrame() } }
+        }
+        return true
+    }
+
+    private func saveDisk9IfNeeded() {
+        guard let d = disk9, d.dirty, let url = disk9URL else { return }
+        do { try Data(d.data).write(to: url) } catch { NSLog("Saving D81 failed: \(error)") }
+    }
+
+    @objc func attachDisk9(_ sender: Any?) {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: "d81")].compactMap { $0 }
+        guard panel.runModal() == .OK, let url = panel.url,
+              let data = FileManager.default.contents(atPath: url.path),
+              let image = D81Image(data: [UInt8](data)) else { return }
+        if insertDisk9(image, url: url) { NSDocumentController.shared.noteNewRecentDocumentURL(url) }
+    }
+
+    @objc func ejectDisk9(_ sender: Any?) {
+        saveDisk9IfNeeded()
+        disk9 = nil
+        disk9URL = nil
+        runner.perform { _ = $0.drive9?.eject() }
+    }
+
+    @objc func newBlankDisk9(_ sender: Any?) {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: "d81")].compactMap { $0 }
+        panel.nameFieldStringValue = "blank.d81"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let name = url.deletingPathExtension().lastPathComponent
+        let image = D81Image.blank(name: String(name.prefix(16)), id: "01")
+        do { try Data(image.data).write(to: url) } catch { return }
+        insertDisk9(image, url: url)
     }
 
     // MARK: - Drive 8
@@ -418,6 +491,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             mi("Eject Disk", #selector(ejectDisk(_:)), "e"),
             .separator(),
             mi("New Blank Disk…", #selector(newBlankDisk(_:)), "n"),
+            .separator(),
+            mi("Attach Disk to Drive 9 (1581)…", #selector(attachDisk9(_:)), "d", [.command, .shift]),
+            mi("Eject Drive 9 Disk", #selector(ejectDisk9(_:)), "e", [.command, .shift]),
+            mi("New Blank D81…", #selector(newBlankDisk9(_:)), "n", [.command, .shift]),
         ])
         let tapeWarp = mi("Warp While Tape Runs", #selector(toggleTapeWarp(_:)))
         tapeWarp.state = .on

@@ -12,7 +12,8 @@ Native Swift/AppKit emulator of a PAL Commodore 64.
 | CIA 6526 ×2 | Timers A/B, TOD, ICR, keyboard/joystick ports, VIC bank, IEC lines, NMI |
 | Keyboard | Mac keyboard → C64 matrix (symbolic punctuation), RESTORE, joystick on numpad / cursor keys / game controllers |
 | 1541 drive | True emulation: drive 6502 running the original DOS ROM, 2× VIA 6522, stepper head, GCR disk at the correct zone speeds; reads and writes |
-| Media | D64 (autostart `LOAD"*",8,1` + `RUN`, Drive menu attach/eject/new blank disk, changes written back to the .d64), PRG autostart. T64 autostart. 1581 is in progress |
+| Media | D64 (autostart `LOAD"*",8,1` + `RUN`, Drive menu attach/eject/new blank disk, changes written back to the .d64), PRG autostart. T64 autostart, D81 on drive 9 (autostart `LOAD"*",9,1` + `RUN`) |
+| 1581 drive (3.5") | True emulation as device 9: 2 MHz 6502 running the original 1581 DOS ROM, 8520 CIA, WD1772 controller (seek/step/restore, read/write sector, read address with real CRCs, write track so the drive's own `N:` format works), 80 tracks × 2 sides × 10 × 512-byte sectors; D81 attach/eject/new blank, changes written back |
 | Datasette | TAP v0/v1 playback into CIA1 FLAG at cycle precision, recording from the cassette write line (KERNAL SAVE to tape), TAP autostart (`LOAD` + `RUN`), Tape menu (insert/new/play/record/stop/rewind/eject), automatic warp while the tape motor runs, recordings written back to the .tap |
 
 ## ROMs
@@ -28,6 +29,7 @@ app looks in `~/Library/Application Support/C64Emu/ROMs`, in a VICE installation
 ./scripts/make-app.sh      # builds build/C64.app
 open build/C64.app
 swift test -c release -Xswiftc -enable-testing   # unit + boot tests
+C64_SLOW_TESTS=1 swift test -c release -Xswiftc -enable-testing --filter testFormat   # 1581 full format (~45 s)
 ```
 
 ## Keys
@@ -45,5 +47,6 @@ swift test -c release -Xswiftc -enable-testing   # unit + boot tests
 | ⌘V | Paste text as typing |
 | ⌘J | Warp mode |
 | ⌘D / ⌘E / ⌘N | Attach / eject / create D64 in drive 8 |
+| ⌘⇧D / ⌘⇧E / ⌘⇧N | Attach / eject / create D81 in drive 9 (1581) |
 | ⌘T / ⌘⇧T | Insert TAP / new blank TAP |
 | ⌘⌥1–4 | Tape play / record / stop / rewind |
