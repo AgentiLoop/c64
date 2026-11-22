@@ -41,6 +41,16 @@ app looks in `~/Library/Application Support/C64Emu/ROMs`, in a VICE installation
 (`/opt/homebrew/share/vice`, `/Applications/vice*`), or asks for a folder containing
 `basic*.bin`, `kernal*.bin`, `chargen*.bin` (and optionally `dos1541*.bin`, `dos1581*.bin`).
 
+Preferred file names (files are matched by name prefix and must be exactly this size):
+
+| ROM | File name | Size | |
+|---|---|---|---|
+| BASIC | `basic-901226-01.bin` | 8 KB (8192 bytes) | required |
+| KERNAL | `kernal-901227-03.bin` | 8 KB (8192 bytes) | required |
+| CHARGEN | `chargen-901225-01.bin` | 4 KB (4096 bytes) | required |
+| 1541 DOS | `dos1541-325302-01+901229-05.bin` | 16 KB (16384 bytes) | optional, drive 8 |
+| 1581 DOS | `dos1581-318045-02.bin` | 32 KB (32768 bytes) | optional, drive 9 |
+
 ## Build & run
 
 ```sh
