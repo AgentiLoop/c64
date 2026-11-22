@@ -46,11 +46,11 @@ Preferred file names (files are matched by name prefix and must be exactly this 
 
 | ROM | File name | Size | |
 |---|---|---|---|
-| BASIC | `basic-901226-01.bin` | 8 KB (8192 bytes) | required |
-| KERNAL | `kernal-901227-03.bin` | 8 KB (8192 bytes) | required |
-| CHARGEN | `chargen-901225-01.bin` | 4 KB (4096 bytes) | required |
-| 1541 DOS | `dos1541-325302-01+901229-05.bin` | 16 KB (16384 bytes) | optional, drive 8 |
-| 1581 DOS | `dos1581-318045-02.bin` | 32 KB (32768 bytes) | optional, drive 9 |
+| BASIC | [`basic-901226-01.bin`](https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/C64/basic-901226-01.bin) | 8 KB (8192 bytes) | required |
+| KERNAL | [`kernal-901227-03.bin`](https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/C64/kernal-901227-03.bin) | 8 KB (8192 bytes) | required |
+| CHARGEN | [`chargen-901225-01.bin`](https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/C64/chargen-901225-01.bin) | 4 KB (4096 bytes) | required |
+| 1541 DOS | [`dos1541-325302-01+901229-05.bin`](https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/DRIVES/dos1541-325302-01%2B901229-05.bin) | 16 KB (16384 bytes) | optional, drive 8 |
+| 1581 DOS | [`dos1581-318045-02.bin`](https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/DRIVES/dos1581-318045-02.bin) | 32 KB (32768 bytes) | optional, drive 9 |
 
 ## Build & run
 
