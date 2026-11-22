@@ -4,11 +4,16 @@ Native Swift/AppKit emulator of a Commodore 64 (PAL or NTSC), with true emulatio
 and 1581 disk drives and the Datasette. The only dependency is [AutoUpdateKit](https://github.com/AgentiLoop/AutoUpdateKit),
 which keeps the app up to date from GitHub releases.
 
-**Website:** https://c64.xcf.ai · **Download:** [latest release](https://github.com/AgentiLoop/c64/releases/latest) · Built with [AgentiLoop Agent!](https://agentiloop.ai)
+| Website | Download | Built with |
+|:---:|:---:|:---:|
+| [c64.xcf.ai](https://c64.xcf.ai) | [Latest release](https://github.com/AgentiLoop/c64/releases/latest) | [AgentiLoop Agent!](https://agentiloop.ai) |
 
-<img width="1223" height="892" alt="image" src="https://github.com/user-attachments/assets/9fa98972-2dbe-49ee-b2ed-f996d7b9961e" />
-
-![Screen recording of the C64 app running](docs/demo.gif)
+<table>
+  <tr>
+    <td width="50%"><img alt="The C64 app" src="https://github.com/user-attachments/assets/9fa98972-2dbe-49ee-b2ed-f996d7b9961e" /></td>
+    <td width="50%"><img alt="Screen recording of the C64 app running" src="docs/demo.gif" /></td>
+  </tr>
+</table>
 
 ## Quick start
 
@@ -37,6 +42,19 @@ Requires macOS 14 or later.
 | 1581 drive (3.5") | True emulation as device 9: 2 MHz 6502 running the original 1581 DOS ROM, 8520 CIA, WD1772 controller (seek/step/restore, read/write sector, read address with real CRCs, write track so the drive's own `N:` format works), 80 tracks × 2 sides × 10 × 512-byte sectors; D81 attach/eject/new blank, changes written back |
 | Fast loading | Instant Load (KERNAL LOAD trap for drives 8/9, on by default) and automatic warp while a drive motor runs (Drive menu) |
 | Datasette | TAP v0/v1 playback into CIA1 FLAG at cycle precision, recording from the cassette write line (KERNAL SAVE to tape), TAP autostart (`LOAD` + `RUN`), Tape menu (insert/new/play/record/stop/rewind/eject), automatic warp while the tape motor runs, recordings written back to the .tap |
+
+## Instant-on disk drives
+
+No more waiting on the 1541. Instant Load catches the C64's own `LOAD` command and copies the file
+straight out of the disk image into memory, so `LOAD"*",8,1` finishes in a blink instead of a minute
+or more over the slow serial bus. It works for drive 8 (1541, D64) and drive 9 (1581, D81) and is on
+by default.
+
+* The directory (`LOAD"$",8`) and games with their own fast loaders or copy protection still go
+  through the real emulated drive, so they behave exactly like the hardware.
+* Anything that does use the real drive runs in automatic warp while the drive motor spins
+  (Drive ▸ Warp While Disk Loads).
+* Toggle it with ⌘L (Drive ▸ Instant Load) if you want the authentic wait.
 
 ## ROMs
 
