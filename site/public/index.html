@@ -30,6 +30,12 @@
   h2 { font-size: 1rem; margin: 40px 0 14px; color: #a5a0ff; }
   .boot { color: #a5a0ff; margin: 0 0 32px; white-space: pre; overflow-x: auto; }
   a { color: #fff; }
+  td a:has(code) { display: inline-flex; align-items: center; gap: 8px; padding: 3px 10px; border-radius: 4px;
+                   color: #fff; text-decoration: none; background: rgba(165,160,255,.15); border: 1px solid rgba(165,160,255,.35);
+                   transition: background .15s, border-color .15s; }
+  td a:has(code)::after { content: "\2193"; color: #a5a0ff; font-weight: 700; }
+  td a:has(code):hover { background: #a5a0ff; border-color: #a5a0ff; color: var(--c64-blue); }
+  td a:has(code):hover::after { color: var(--c64-blue); }
   .shot { width: 100%; height: auto; border-radius: 4px; display: block; margin: 20px 0; background: #000; }
   .buttons { display: flex; gap: 12px; flex-wrap: wrap; margin: 20px 0; }
   .btn { display: inline-block; padding: 11px 20px; border-radius: 4px; text-decoration: none;
