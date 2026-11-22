@@ -30,12 +30,12 @@
   h2 { font-size: 1rem; margin: 40px 0 14px; color: #a5a0ff; }
   .boot { color: #a5a0ff; margin: 0 0 32px; white-space: pre; overflow-x: auto; }
   a { color: #fff; }
-  td a:has(code) { display: inline-flex; align-items: center; gap: 8px; padding: 3px 10px; border-radius: 4px;
+  td a:has(code), a[download] { display: inline-flex; align-items: center; gap: 8px; padding: 3px 10px; border-radius: 4px;
                    color: #fff; text-decoration: none; background: rgba(165,160,255,.15); border: 1px solid rgba(165,160,255,.35);
                    transition: background .15s, border-color .15s; }
-  td a:has(code)::after { content: "\2193"; color: #a5a0ff; font-weight: 700; }
-  td a:has(code):hover { background: #a5a0ff; border-color: #a5a0ff; color: var(--c64-blue); }
-  td a:has(code):hover::after { color: var(--c64-blue); }
+  td a:has(code)::after, a[download]::after { content: "\2193"; color: #a5a0ff; font-weight: 700; }
+  td a:has(code):hover, a[download]:hover { background: #a5a0ff; border-color: #a5a0ff; color: var(--c64-blue); }
+  td a:has(code):hover::after, a[download]:hover::after { color: var(--c64-blue); }
   .shot { width: 100%; height: auto; border-radius: 16px; overflow: hidden; display: block; margin: 20px 0; background: #000; }
   .buttons { display: flex; gap: 12px; flex-wrap: wrap; margin: 20px 0; }
   .btn { display: inline-block; padding: 11px 20px; border-radius: 4px; text-decoration: none;
@@ -132,6 +132,7 @@ open build/C64.app</pre>
   </table>
 
   <footer>
+    <p>Inspired by real Commodore hardware that I used as a kid, video games, bulletin boards, 8bit forever.</p>
     Created by Todd Bruss &middot; The C64 emulator source is <a href="https://github.com/AgentiLoop/c64/blob/main/LICENSE">MIT licensed</a> &middot; Made with <a href="https://agentiloop.ai">AgentiLoop Agent!</a> &middot;
     Commodore 64 is a trademark of its respective owner; ROMs and games are not included.
   </footer>
