@@ -5,7 +5,7 @@ and 1581 disk drives and the Datasette. No third-party dependencies.
 
 **Website:** https://c64.xcf.ai · **Download:** [latest release](https://github.com/AgentiLoop/c64/releases/latest) · Built with [AgentiLoop Agent!](https://agentiloop.ai)
 
-![C64 running the classic 10 PRINT maze](site/public/screenshot.jpg)
+![Screen recording of the C64 app running](docs/demo.gif)
 
 ## Quick start
 
