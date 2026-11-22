@@ -18,3 +18,4 @@ games/
 *.tap
 *.prg
 *.crt
+.wrangler/
