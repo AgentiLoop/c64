@@ -78,6 +78,7 @@ C64_SLOW_TESTS=1 swift test -c release -Xswiftc -enable-testing --filter testFor
 | ⌘1 / ⌘2 / ⌘3 | View: full border / small border / no border |
 | ⌘D / ⌘E / ⌘N | Attach / eject / create D64 in drive 8 |
 | ⌘L | Instant Load on/off (copies files straight from the disk image; directory, custom loaders still use the real drive) |
+| ⌘P | Pause / resume (handy for screenshots) |
 | ⌘⇧D / ⌘⇧E / ⌘⇧N | Attach / eject / create D81 in drive 9 (1581) |
 | ⌘T / ⌘⇧T | Insert TAP / new blank TAP |
 | ⌘⌥1–4 | Tape play / record / stop / rewind |
