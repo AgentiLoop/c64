@@ -14,6 +14,7 @@ public final class C64: CPUBus {
             sid.clockHz = clockHz
             drive8?.hostClock = clockHz
             drive9?.hostClock = clockHz
+            modem?.clockHz = clockHz
             reset()
         }
     }
@@ -85,6 +86,10 @@ public final class C64: CPUBus {
     }
     /// The Datasette on the cassette port.
     public let datasette = Datasette()
+    /// Modem on the user port (nil = nothing plugged in).
+    public var modem: UserPortModem? {
+        didSet { modem?.clockHz = clockHz }
+    }
     var lastWriteLine = false
     /// Cassette motor control output (true = motor on).
     public var cassetteMotor: Bool { (portData & portDDR & 0x20) == 0 && portDDR & 0x20 != 0 }
@@ -127,6 +132,7 @@ public final class C64: CPUBus {
             let pa = self.cia2.portAOutput
             self.vicBank = Int(3 - (pa & 3))
             self.iec.setC64Lines(atn: pa & 0x08 != 0, clock: pa & 0x10 != 0, data: pa & 0x20 != 0)
+            self.modem?.setTXD(pa & 0x04 != 0, cycle: self.cycles)
         }
         cia2.portAIn = { [unowned self] in
             var v: UInt8 = 0x3F
@@ -134,6 +140,7 @@ public final class C64: CPUBus {
             if self.iec.dataLine { v |= 0x80 }
             return v
         }
+        cia2.portBIn = { [unowned self] in self.modem?.portB ?? 0xFF }
     }
 
     public func reset() {
@@ -184,6 +191,7 @@ public final class C64: CPUBus {
             cia1.tickTOD()
             cia2.tickTOD()
         }
+        if let m = modem { m.tick(self) }
         cpu.irqLine = vic.irq || cia1.irq
         let nmi = cia2.irq || restorePressed
         if nmi && !nmiLine { cpu.nmiPending = true }

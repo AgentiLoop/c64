@@ -39,6 +39,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         ("No Border", CGRect(x: 32, y: 36, width: 320, height: 200)),
     ]
     var diskWarpItem: NSMenuItem!
+    /// User-port modem connected to the internet (telnet BBSes).
+    var modemLink: ModemLink!
+    var hangUpItem: NSMenuItem!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMenu()
@@ -59,6 +62,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         for item in standardItems { item.state = item.representedObject as? String == c64.standard.rawValue ? .on : .off }
         runner = EmulatorRunner(c64: c64, audio: audio)
+        modemLink = ModemLink(runner: runner)
+        modemLink.onStatus = { [weak self] host in
+            self?.hangUpItem.title = host.map { "Hang Up (\($0))" } ?? "Hang Up"
+        }
         runner.warpWhileDisk = UserDefaults.standard.object(forKey: "WarpWhileDisk") as? Bool ?? true
         fastLoadItem.state = c64.fastLoad ? .on : .off
         diskWarpItem.state = runner.warpWhileDisk ? .on : .off
@@ -504,6 +511,65 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         runner.perform { $0.queueTyping(text) }
     }
 
+    // MARK: - Modem
+
+    /// BBSes from BBS-LIST.md in the app bundle (rows of the Markdown table with a `host:port` column).
+    static func loadPhoneBook() -> [(name: String, host: String, port: UInt16)] {
+        guard let url = Bundle.main.url(forResource: "BBS-LIST", withExtension: "md"),
+              let text = try? String(contentsOf: url, encoding: .utf8) else { return [] }
+        return text.split(separator: "\n").compactMap { line in
+            let cells = line.split(separator: "|").map { $0.trimmingCharacters(in: .whitespaces) }
+            guard line.hasPrefix("|"), cells.count >= 2,
+                  let address = cells[1].split(separator: "`").first(where: { $0.contains(":") }),
+                  let colon = address.lastIndex(of: ":"), let port = UInt16(address[address.index(after: colon)...])
+            else { return nil }
+            return (cells[0], String(address[..<colon]), port)
+        }
+    }
+
+    /// Autostarts the bundled BASIC terminal (1200 baud on the user port).
+    @objc func loadTerminal(_ sender: Any?) {
+        guard let url = Bundle.main.url(forResource: "TERM", withExtension: "PRG"),
+              let data = FileManager.default.contents(atPath: url.path) else { return }
+        runner.perform { c64 in
+            C64Autostart.ensureBooted(c64)
+            c64.loadPRG([UInt8](data))
+            c64.typeIntoBuffer("RUN\n")
+        }
+    }
+
+    @objc func dialPhoneBook(_ sender: NSMenuItem) {
+        guard let address = sender.representedObject as? String else { return }
+        dial(address)
+    }
+
+    @objc func dialAddress(_ sender: Any?) {
+        let alert = NSAlert()
+        alert.messageText = "Dial a BBS"
+        alert.informativeText = "Enter host:port (telnet). A terminal program must be running on the C64."
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
+        field.placeholderString = "oasisbbs.hopto.org:6400"
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Dial")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = field
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        dial(field.stringValue.trimmingCharacters(in: .whitespaces))
+    }
+
+    private func dial(_ address: String) {
+        var host = address
+        var port: UInt16 = 23
+        if let colon = address.lastIndex(of: ":"), let p = UInt16(address[address.index(after: colon)...]) {
+            host = String(address[..<colon])
+            port = p
+        }
+        guard !host.isEmpty else { return }
+        modemLink.dial(host: host, port: port)
+    }
+
+    @objc func hangUp(_ sender: Any?) { modemLink.hangUp() }
+
     // MARK: - Machine
 
     @objc func checkForUpdates(_ sender: Any?) { Task { await updater.check(interactive: true) } }
@@ -624,6 +690,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             return item
         }
         add("View", borderItems)
+        let phoneBook = NSMenu(title: "Phone Book")
+        for entry in AppDelegate.loadPhoneBook() {
+            let item = mi("\(entry.name)  —  \(entry.host):\(entry.port)", #selector(dialPhoneBook(_:)))
+            item.representedObject = "\(entry.host):\(entry.port)"
+            phoneBook.addItem(item)
+        }
+        let phoneBookItem = NSMenuItem(title: "Phone Book", action: nil, keyEquivalent: "")
+        phoneBookItem.submenu = phoneBook
+        hangUpItem = mi("Hang Up", #selector(hangUp(_:)))
+        add("Modem", [
+            mi("Load Terminal Program", #selector(loadTerminal(_:))),
+            .separator(),
+            phoneBookItem,
+            mi("Dial Address…", #selector(dialAddress(_:))),
+            hangUpItem,
+        ])
         let windowMenu = NSMenu(title: "Window")
         windowMenu.addItem(mi("Minimize", #selector(NSWindow.performMiniaturize(_:)), "m"))
         windowMenu.addItem(mi("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]))

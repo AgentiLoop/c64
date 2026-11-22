@@ -58,6 +58,26 @@ by default.
   (Drive ▸ Warp While Disk Loads).
 * Toggle it with ⌘L (Drive ▸ Instant Load) if you want the authentic wait.
 
+## Dial-up BBSes over telnet
+
+A Hayes-style modem sits on the user port and "dials" internet hosts instead of phone numbers,
+like the WiFi modems people plug into real C64s. Plenty of Commodore BBSes are still online:
+see the [BBS list](docs/BBS-LIST.md).
+
+1. **Modem ▸ Load Terminal Program** starts a small BASIC terminal (1200 baud, KERNAL RS-232).
+2. Pick a board from **Modem ▸ Phone Book**, or type `ATDT host:port` in the terminal
+   (e.g. `ATDT oasisbbs.hopto.org:6400`).
+3. Hang up with **Modem ▸ Hang Up**, or `+++` (wait a second) and `ATH`.
+
+* Other terminal programs that use the user port the standard way (TXD on PA2, RXD on PB0 + FLAG,
+  DCD on PB4) should work too; only the bundled terminal has been tested so far. The modem follows the C64's speed from the "AT" it sends
+  (300–9600 baud).
+* Commands: `ATD`/`ATDT host[:port]` (port 23 by default), `ATH`, `ATO`, `ATZ`, `ATE0`/`ATE1`, `ATI`,
+  `A/`; other settings are accepted with `OK`.
+* Telnet option requests are answered and raw TCP boards work as well.
+* The modem never lets the KERNAL's 256-byte receive buffer overflow, so even a BASIC terminal
+  doesn't lose characters.
+
 ## ROMs
 
 The Commodore ROMs are copyrighted and are not part of this repository. On first launch the
