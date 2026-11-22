@@ -12,7 +12,8 @@ Native Swift/AppKit emulator of a PAL Commodore 64.
 | CIA 6526 ×2 | Timers A/B, TOD, ICR, keyboard/joystick ports, VIC bank, IEC lines, NMI |
 | Keyboard | Mac keyboard → C64 matrix (symbolic punctuation), RESTORE, joystick on numpad / cursor keys / game controllers |
 | 1541 drive | True emulation: drive 6502 running the original DOS ROM, 2× VIA 6522, stepper head, GCR disk at the correct zone speeds; reads and writes |
-| Media | D64 (autostart `LOAD"*",8,1` + `RUN`, Drive menu attach/eject/new blank disk, changes written back to the .d64), PRG autostart. Tape and 1581 are in progress |
+| Media | D64 (autostart `LOAD"*",8,1` + `RUN`, Drive menu attach/eject/new blank disk, changes written back to the .d64), PRG autostart. T64 autostart. 1581 is in progress |
+| Datasette | TAP v0/v1 playback into CIA1 FLAG at cycle precision, recording from the cassette write line (KERNAL SAVE to tape), TAP autostart (`LOAD` + `RUN`), Tape menu (insert/new/play/record/stop/rewind/eject), automatic warp while the tape motor runs, recordings written back to the .tap |
 
 ## ROMs
 
@@ -44,3 +45,5 @@ swift test -c release -Xswiftc -enable-testing   # unit + boot tests
 | ⌘V | Paste text as typing |
 | ⌘J | Warp mode |
 | ⌘D / ⌘E / ⌘N | Attach / eject / create D64 in drive 8 |
+| ⌘T / ⌘⇧T | Insert TAP / new blank TAP |
+| ⌘⌥1–4 | Tape play / record / stop / rewind |

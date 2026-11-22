@@ -18,6 +18,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var disk: GCRDisk?
     var baseTitle = "C64"
     var lastLED = false
+    var lastTape = false
+    /// The TAP file in the Datasette (recordings are written back to it).
+    var tapeURL: URL?
     var pendingOpen: URL?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -57,6 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 
     func applicationWillTerminate(_ notification: Notification) {
+        saveTapeIfNeeded()   // needs the emulation thread still running
         runner?.stop()
         saveDiskIfNeeded()
     }
@@ -79,9 +83,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func frameTick() {
         view.refresh()
         let led = runner.c64.drive8?.ledOn ?? false
-        if led != lastLED {
+        let tape = runner.c64.datasette.mode != .stopped && runner.c64.cassetteMotor
+        if led != lastLED || tape != lastTape {
             lastLED = led
-            window.title = (led ? "● " : "") + baseTitle
+            lastTape = tape
+            window.title = (led ? "● " : "") + (tape ? "▶ " : "") + baseTitle
         }
         var bits = keyMapper.joystickBits
         for pad in GCController.controllers() {
@@ -181,6 +187,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 C64Autostart.ensureBooted(c64)
                 c64.queueTyping("LOAD\"*\",8,1\nRUN\n")
             }
+        case "tap":
+            guard let pulses = Datasette.parseTAP(bytes) else {
+                let alert = NSAlert()
+                alert.messageText = "Not a valid TAP image"
+                alert.informativeText = url.lastPathComponent
+                alert.runModal()
+                return
+            }
+            insertTape(pulses, url: url)
+            runner.perform { c64 in
+                C64Autostart.ensureBooted(c64)
+                c64.datasette.mode = .playing
+                c64.queueTyping("LOAD\nRUN\n")
+            }
+        case "t64":
+            guard let file = T64Archive.files(bytes)?.first else {
+                let alert = NSAlert()
+                alert.messageText = "No programs in T64 archive"
+                alert.informativeText = url.lastPathComponent
+                alert.runModal()
+                return
+            }
+            runner.perform { c64 in
+                C64Autostart.ensureBooted(c64)
+                c64.loadPRG(file.prg)
+                c64.typeIntoBuffer("RUN\n")
+            }
         case "prg":
             runner.perform { c64 in
                 C64Autostart.ensureBooted(c64)
@@ -195,6 +228,64 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         baseTitle = "C64 — \(url.lastPathComponent)"
         window.title = baseTitle
+    }
+
+    // MARK: - Datasette
+
+    private func insertTape(_ pulses: [UInt32], url: URL?) {
+        saveTapeIfNeeded()
+        tapeURL = url
+        runner.perform { $0.datasette.insert(pulses: pulses) }
+    }
+
+    /// Writes a tape that has been recorded on back to its TAP file.
+    private func saveTapeIfNeeded() {
+        guard let url = tapeURL else { return }
+        var data: [UInt8]?
+        let done = DispatchSemaphore(value: 0)
+        runner.perform { c64 in
+            if c64.datasette.dirty { data = c64.datasette.tapData() }
+            done.signal()
+        }
+        guard done.wait(timeout: .now() + 1) == .success, let bytes = data else { return }
+        do { try Data(bytes).write(to: url) } catch { NSLog("Saving tape failed: \(error)") }
+    }
+
+    @objc func attachTape(_ sender: Any?) {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: "tap")].compactMap { $0 }
+        guard panel.runModal() == .OK, let url = panel.url,
+              let data = FileManager.default.contents(atPath: url.path),
+              let pulses = Datasette.parseTAP([UInt8](data)) else { return }
+        insertTape(pulses, url: url)
+        NSDocumentController.shared.noteNewRecentDocumentURL(url)
+    }
+
+    @objc func newBlankTape(_ sender: Any?) {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: "tap")].compactMap { $0 }
+        panel.nameFieldStringValue = "blank.tap"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do { try Data(Datasette.makeTAP([])).write(to: url) } catch { return }
+        insertTape([], url: url)
+    }
+
+    @objc func tapePlay(_ sender: Any?) { runner.perform { $0.datasette.mode = .playing } }
+    @objc func tapeRecord(_ sender: Any?) { runner.perform { $0.datasette.mode = .recording } }
+    @objc func tapeStop(_ sender: Any?) {
+        runner.perform { $0.datasette.mode = .stopped }
+        saveTapeIfNeeded()
+    }
+    @objc func tapeRewind(_ sender: Any?) { runner.perform { $0.datasette.mode = .stopped; $0.datasette.rewind() } }
+    @objc func ejectTape(_ sender: Any?) {
+        runner.perform { $0.datasette.mode = .stopped }
+        saveTapeIfNeeded()
+        tapeURL = nil
+        runner.perform { $0.datasette.insert(pulses: []) }
+    }
+    @objc func toggleTapeWarp(_ sender: NSMenuItem) {
+        runner.warpWhileTape.toggle()
+        sender.state = runner.warpWhileTape ? .on : .off
     }
 
     // MARK: - Drive 8
@@ -327,6 +418,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             mi("Eject Disk", #selector(ejectDisk(_:)), "e"),
             .separator(),
             mi("New Blank Disk…", #selector(newBlankDisk(_:)), "n"),
+        ])
+        let tapeWarp = mi("Warp While Tape Runs", #selector(toggleTapeWarp(_:)))
+        tapeWarp.state = .on
+        add("Tape", [
+            mi("Insert Tape…", #selector(attachTape(_:)), "t"),
+            mi("New Blank Tape…", #selector(newBlankTape(_:)), "t", [.command, .shift]),
+            mi("Eject Tape", #selector(ejectTape(_:))),
+            .separator(),
+            mi("Play", #selector(tapePlay(_:)), "1", [.command, .option]),
+            mi("Record", #selector(tapeRecord(_:)), "2", [.command, .option]),
+            mi("Stop", #selector(tapeStop(_:)), "3", [.command, .option]),
+            mi("Rewind", #selector(tapeRewind(_:)), "4", [.command, .option]),
+            .separator(),
+            tapeWarp,
         ])
         let windowMenu = NSMenu(title: "Window")
         windowMenu.addItem(mi("Minimize", #selector(NSWindow.performMiniaturize(_:)), "m"))

@@ -43,8 +43,9 @@ public final class C64: CPUBus {
     public var drive8: Drive1541? {
         didSet { iec.devices = drive8.map { [$0] } ?? [] }
     }
-    /// Cassette sense line (true = PLAY pressed).
-    public var cassetteSense = false
+    /// The Datasette on the cassette port.
+    public let datasette = Datasette()
+    var lastWriteLine = false
     /// Cassette motor control output (true = motor on).
     public var cassetteMotor: Bool { (portData & portDDR & 0x20) == 0 && portDDR & 0x20 != 0 }
     /// Extra devices clocked with the machine (drives, datasette).
@@ -131,6 +132,7 @@ public final class C64: CPUBus {
         sid.tick()
         for d in clockedDevices { d(self) }
         if let d = drive8 { d.clockC64Cycle() }
+        if datasette.mode == .playing { datasette.tick(motor: cassetteMotor, cia: cia1) }
         cycles &+= 1
         todCounter += 1
         if todCounter >= C64.palClock / 50 {
@@ -176,7 +178,7 @@ public final class C64: CPUBus {
             if a == 0 { return portDDR }
             if a == 1 {
                 var input: UInt8 = 0xDF
-                if cassetteSense { input &= ~0x10 }
+                if datasette.mode != .stopped { input &= ~0x10 }
                 return (portData & portDDR) | (input & ~portDDR)
             }
             return ram[a]
@@ -198,6 +200,9 @@ public final class C64: CPUBus {
         if a < 2 {
             if a == 0 { portDDR = value } else { portData = value }
             updatePort()
+            let writeLine = (portData & portDDR & 0x08) != 0
+            if writeLine && !lastWriteLine { datasette.writeEdge(at: cycles, motor: cassetteMotor) }
+            lastWriteLine = writeLine
             ram[a] = value
             return
         }

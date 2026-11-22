@@ -13,6 +13,8 @@ final class EmulatorRunner {
     private(set) var frontBuffer = [UInt32](repeating: 0, count: VICII.screenWidth * VICII.screenHeight)
     var onFrame: (() -> Void)?
     var warp = false
+    /// Run at full speed while the Datasette motor is turning.
+    var warpWhileTape = true
     var paused = false
 
     init(c64: C64, audio: AudioOutput) {
@@ -60,6 +62,7 @@ final class EmulatorRunner {
             }
 
             c64.runFrame()
+            let warp = self.warp || (warpWhileTape && c64.datasette.mode != .stopped && c64.cassetteMotor)
             let samples = c64.sid.takeSamples()
             frameCounter += 1
             if !warp { audio.ring.write(samples) }
