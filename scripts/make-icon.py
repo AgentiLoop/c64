@@ -2,7 +2,7 @@
 """Draws the C64 app icon (rainbow background, pixel "c64") and writes Resources/AppIcon.icns.
 Usage: python3 scripts/make-icon.py   (needs Pillow and macOS iconutil)"""
 import os, shutil, subprocess
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "Resources")
@@ -17,14 +17,15 @@ RAINBOW = [(150, 20, 35), (160, 80, 15), (160, 130, 20), (30, 115, 50), (20, 85,
 
 
 def icon():
-    # Rainbow: diagonal bands across the whole canvas.
-    bg = Image.new("RGB", (S, S))
+    # Rainbow: sharp diagonal bands, drawn at 4x and scaled down so the edges are crisp but not jagged.
+    big = S * 4
+    bg = Image.new("RGB", (big, big))
     d = ImageDraw.Draw(bg)
-    band = S * 2 // len(RAINBOW) + 1
+    band = big * 2 // len(RAINBOW) + 1
     for i, c in enumerate(RAINBOW):
-        x = -S + i * band
-        d.polygon([(x, S), (x + band, S), (x + band + S, 0), (x + S, 0)], fill=c)
-    bg = bg.filter(ImageFilter.GaussianBlur(18))
+        x = -big + i * band
+        d.polygon([(x, big), (x + band, big), (x + band + big, 0), (x + big, 0)], fill=c)
+    bg = bg.resize((S, S), Image.LANCZOS)
 
     # macOS icon grid: 824x824 rounded square centred on a 1024 canvas.
     mask = Image.new("L", (S, S), 0)
