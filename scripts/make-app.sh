@@ -5,8 +5,11 @@
 #   ./scripts/make-app.sh             # build + sign
 #   ./scripts/make-app.sh --release   # also notarize, staple and zip to build/C64.app.zip
 # Overrides: SIGN_ID=..., NOTARY_PROFILE=... (default "App Store Connect Profile").
+# Version: VERSION=0.2.0 BUILD=2 ./scripts/make-app.sh --release   (then tag the release v0.2.0).
 set -e
 cd "$(dirname "$0")/.."
+VERSION="${VERSION:-0.1.0}"
+BUILD="${BUILD:-1}"
 swift build -c release --arch arm64 --arch x86_64
 BIN="$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)/C64Emu"
 APP=build/C64.app
@@ -25,9 +28,9 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <key>CFBundleExecutable</key><string>C64</string>
     <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>0.1</string>
+    <key>CFBundleShortVersionString</key><string>0.1.0</string>
     <key>CFBundleVersion</key><string>1</string>
-    <key>LSMinimumSystemVersion</key><string>13.0</string>
+    <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSPrincipalClass</key><string>NSApplication</string>
     <key>CFBundleDocumentTypes</key>
@@ -47,6 +50,9 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 </dict>
 </plist>
 PLIST
+# The updater compares this with release tags (vX.Y.Z), so it must match the tag's X.Y.Z.
+plutil -replace CFBundleShortVersionString -string "$VERSION" "$APP/Contents/Info.plist"
+plutil -replace CFBundleVersion -string "$BUILD" "$APP/Contents/Info.plist"
 echo "APPL????" > "$APP/Contents/PkgInfo"
 SIGN_ID="${SIGN_ID:-$(security find-identity -v -p codesigning 2>/dev/null | sed -n 's/.*"\(Developer ID Application:[^"]*\)".*/\1/p' | head -1)}"
 if [ -n "$SIGN_ID" ] && [ "$SIGN_ID" != "-" ]; then

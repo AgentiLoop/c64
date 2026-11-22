@@ -1,9 +1,12 @@
 import AppKit
+import AutoUpdateKit
 import GameController
 import UniformTypeIdentifiers
 import C64Core
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+    /// Checks GitHub releases (tags vX.Y.Z, asset C64.app.zip) and installs Developer ID–signed updates.
+    var updater: AutoUpdater!
     var window: NSWindow!
     var view: EmulatorView!
     var runner: EmulatorRunner!
@@ -39,6 +42,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMenu()
+        updater = AutoUpdater(configuration: AutoUpdateConfiguration(
+            appName: "C64",
+            repository: "AgentiLoop/c64",
+            tagPrefix: "v",
+            isUpdateAsset: { $0 == "C64.app.zip" },
+            teamID: "469UCUB275"
+        ))
+        updater.start()
         guard let roms = loadROMs() else { NSApp.terminate(nil); return }
         let c64 = C64(roms: roms)
         c64.fastLoad = UserDefaults.standard.object(forKey: "FastLoad") as? Bool ?? true
@@ -495,6 +506,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     // MARK: - Machine
 
+    @objc func checkForUpdates(_ sender: Any?) { Task { await updater.check(interactive: true) } }
+
     @objc func softReset(_ sender: Any?) { runner.perform { $0.cpu.reset() } }
     @objc func hardReset(_ sender: Any?) { runner.perform { $0.reset() } }
 
@@ -541,6 +554,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         add("C64", [
             mi("About C64", #selector(NSApplication.orderFrontStandardAboutPanel(_:))),
+            mi("Check for Updates…", #selector(checkForUpdates(_:))),
             .separator(),
             mi("Hide C64", #selector(NSApplication.hide(_:)), "h"),
             mi("Quit C64", #selector(NSApplication.terminate(_:)), "q"),

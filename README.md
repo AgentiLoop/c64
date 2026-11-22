@@ -1,7 +1,8 @@
 # C64 — a Commodore 64 emulator for macOS
 
 Native Swift/AppKit emulator of a Commodore 64 (PAL or NTSC), with true emulation of the 1541
-and 1581 disk drives and the Datasette. No third-party dependencies.
+and 1581 disk drives and the Datasette. The only dependency is [AutoUpdateKit](https://github.com/AgentiLoop/AutoUpdateKit),
+which keeps the app up to date from GitHub releases.
 
 **Website:** https://c64.xcf.ai · **Download:** [latest release](https://github.com/AgentiLoop/c64/releases/latest) · Built with [AgentiLoop Agent!](https://agentiloop.ai)
 
@@ -17,7 +18,7 @@ and 1581 disk drives and the Datasette. No third-party dependencies.
    (`LOAD"*",8,1` + `RUN`). `.d81`, `.prg`, `.t64` and `.tap` files work the same way, or use the
    Drive and Tape menus.
 
-Requires macOS 13 or later.
+Requires macOS 14 or later.
 
 ## Status
 
