@@ -125,6 +125,11 @@ public final class C64: CPUBus {
     public private(set) var resetCycle: UInt64 = 0
     /// PETSCII bytes waiting to be fed into the keyboard buffer.
     var typeQueue: [UInt8] = []
+    /// C128 mode (MMU, 128K, C128 ROMs) when set; see `setC128`.
+    var c128: C128Memory?
+    /// KERNAL keyboard buffer and its length (C64: $0277/$C6, C128: $034A/$D0).
+    var keyBuffer: Int { c128 == nil ? 0x277 : 0x34A }
+    var keyCount: Int { c128 == nil ? 0xC6 : 0xD0 }
 
     public init(basic: [UInt8], kernal: [UInt8], chargen: [UInt8]) {
         self.basic = basic
@@ -148,6 +153,7 @@ public final class C64: CPUBus {
     private func wire() {
         vic.memRead = { [unowned self] a in
             let addr = Int(a)
+            if let m = self.c128 { return self.vicRead128(m, addr) }
             if vicBank & 1 == 0 && addr & 0x3000 == 0x1000 { return self.chargen[addr & 0x0FFF] }
             return self.ram[vicBank << 14 | addr]
         }
@@ -181,6 +187,7 @@ public final class C64: CPUBus {
         drive8?.reset()
         drive9?.reset()
         swiftLink?.reset()
+        c128?.reset()
         cpu.reset()
         resetCycle = cycles
         typeQueue.removeAll()
@@ -256,6 +263,7 @@ public final class C64: CPUBus {
     /// CPU-visible read with I/O side effects.
     public func peek(_ address: UInt16) -> UInt8 {
         let a = Int(address)
+        if a >= 2, let m = c128 { return peek128(m, a) }
         switch a >> 12 {
         case 0x0:
             if a == 0 { return portDDR }
@@ -289,6 +297,7 @@ public final class C64: CPUBus {
             ram[a] = value
             return
         }
+        if let m = c128 { poke128(m, a, value); return }
         if a >> 12 == 0xD && (loram || hiram) && charen {
             writeIO(a, value)
             return
@@ -296,7 +305,7 @@ public final class C64: CPUBus {
         ram[a] = value
     }
 
-    private func readIO(_ a: Int) -> UInt8 {
+    func readIO(_ a: Int) -> UInt8 {
         switch a >> 8 {
         case 0xD0...0xD3: return vic.read(a)
         case 0xD4...0xD7: return sid.read(a & 0x1F)
@@ -308,7 +317,7 @@ public final class C64: CPUBus {
         }
     }
 
-    private func writeIO(_ a: Int, _ v: UInt8) {
+    func writeIO(_ a: Int, _ v: UInt8) {
         switch a >> 8 {
         case 0xD0...0xD3: vic.write(a, v)
         case 0xD4...0xD7: sid.write(a & 0x1F, v)
@@ -400,13 +409,13 @@ public final class C64: CPUBus {
 
     /// Puts text into the KERNAL keyboard buffer (max 10 chars at a time).
     public func typeIntoBuffer(_ text: String) {
-        var n = Int(ram[0xC6])
+        var n = Int(ram[keyCount])
         for ch in text.uppercased().unicodeScalars where n < 10 {
             let code: UInt8 = ch == "\n" ? 13 : UInt8(truncatingIfNeeded: ch.value)
-            ram[0x277 + n] = code
+            ram[keyBuffer + n] = code
             n += 1
         }
-        ram[0xC6] = UInt8(n)
+        ram[keyCount] = UInt8(n)
     }
 
     /// Queues text to be typed (ASCII; converted to PETSCII), fed as the buffer empties.
@@ -423,10 +432,10 @@ public final class C64: CPUBus {
     }
 
     private func feedTypeQueue() {
-        guard !typeQueue.isEmpty, ram[0xC6] == 0 else { return }
+        guard !typeQueue.isEmpty, ram[keyCount] == 0 else { return }
         let n = min(9, typeQueue.count)
-        for i in 0..<n { ram[0x277 + i] = typeQueue[i] }
-        ram[0xC6] = UInt8(n)
+        for i in 0..<n { ram[keyBuffer + i] = typeQueue[i] }
+        ram[keyCount] = UInt8(n)
         typeQueue.removeFirst(n)
     }
 

@@ -8,6 +8,8 @@ public struct ROMSet {
     public var chargen: [UInt8]
     public var drive1541: [UInt8]?
     public var drive1581: [UInt8]?
+    /// The C128 ROMs, if all four are present (enables C128 mode).
+    public var c128: C128ROMs?
 
     public init(basic: [UInt8], kernal: [UInt8], chargen: [UInt8], drive1541: [UInt8]? = nil, drive1581: [UInt8]? = nil) {
         self.basic = basic; self.kernal = kernal; self.chargen = chargen
@@ -25,6 +27,7 @@ public struct ROMSet {
         for base in ["/opt/homebrew/share/vice", "/usr/local/share/vice", "/usr/share/vice"] {
             dirs.append(URL(fileURLWithPath: base + "/C64"))
             dirs.append(URL(fileURLWithPath: base + "/DRIVES"))
+            dirs.append(URL(fileURLWithPath: base + "/C128"))
         }
         if let apps = try? FileManager.default.contentsOfDirectory(atPath: "/Applications") {
             for app in apps where app.lowercased().hasPrefix("vice") {
@@ -32,6 +35,7 @@ public struct ROMSet {
                 for sub in ["", "/Contents/Resources/share/vice", "/share/vice"] {
                     dirs.append(URL(fileURLWithPath: p + sub + "/C64"))
                     dirs.append(URL(fileURLWithPath: p + sub + "/DRIVES"))
+                    dirs.append(URL(fileURLWithPath: p + sub + "/C128"))
                 }
             }
         }
@@ -63,6 +67,14 @@ public struct ROMSet {
         else { return nil }
         let d1541 = find(prefixes: ["dos1541-325302-01", "dos1541ii", "dos1541", "1541"], size: 16384, in: dirs)
         let d1581 = find(prefixes: ["dos1581", "1581"], size: 32768, in: dirs)
-        return ROMSet(basic: basic, kernal: kernal, chargen: chargen, drive1541: d1541, drive1581: d1581)
+        var set = ROMSet(basic: basic, kernal: kernal, chargen: chargen, drive1541: d1541, drive1581: d1581)
+        if let k = find(prefixes: ["kernal-318020", "kernal-315078", "kernal-318034", "kernal-325172", "kernal128", "kernal"],
+                        size: 16384, in: dirs),
+           let lo = find(prefixes: ["basiclo"], size: 16384, in: dirs),
+           let hi = find(prefixes: ["basichi"], size: 16384, in: dirs),
+           let ch = find(prefixes: ["chargen-390059", "chargen-315079", "chargen128", "chargen"], size: 8192, in: dirs) {
+            set.c128 = C128ROMs(kernal: k, basicLo: lo, basicHi: hi, chargen: ch)
+        }
+        return set
     }
 }

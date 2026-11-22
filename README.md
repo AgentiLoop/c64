@@ -35,6 +35,7 @@ Requires macOS 14 or later.
 |------|-------|
 | 6510 CPU | Cycle-exact bus accesses, all documented + undocumented opcodes, passes Klaus Dormann's functional test |
 | Video standard | PAL (6569, 50 Hz, default) or NTSC (6567R8, 60 Hz) via Machine ▸ Video Standard; CPU, SID pitch, CIA clocks and drive timing follow; the KERNAL detects the machine itself |
+| Commodore 128 | Machine ▸ Commodore 128 boots C128 mode with BASIC 7.0 (122365 bytes free): 8722 MMU with 128K in two banks, common RAM, page 0/1 relocation, ROM/RAM configurations and the $FF00 registers; the 8502 starts at the KERNAL reset vector (no Z80/CP/M). 40 columns on the VIC-II; the 8563 VDC is only emulated far enough for the KERNAL to set it up (no 80-column picture), and there is no 2 MHz mode or C64 mode switch (GO64) yet |
 | VIC-II (6569) | Cycle-stepped: badlines, sprite DMA/cycle stealing, border flip-flops, raster IRQ, all text/bitmap modes, sprites + collisions |
 | SID (6581) | 3 voices, all waveforms, sync/ring, ADSR with real rate tables, resonant multimode filter, digi (volume DC) |
 | CIA 6526 ×2 | Timers A/B, TOD, ICR, keyboard/joystick ports, VIC bank, IEC lines, NMI |
@@ -117,6 +118,10 @@ Preferred file names (files are matched by name prefix and must be exactly this 
 | CHARGEN | [`chargen-901225-01.bin`](https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/C64/chargen-901225-01.bin) | 4 KB (4096 bytes) | required |
 | 1541 DOS | [`dos1541-325302-01+901229-05.bin`](https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/DRIVES/dos1541-325302-01%2B901229-05.bin) | 16 KB (16384 bytes) | optional, drive 8 |
 | 1581 DOS | [`dos1581-318045-02.bin`](https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/DRIVES/dos1581-318045-02.bin) | 32 KB (32768 bytes) | optional, drive 9 |
+| C128 KERNAL | [`kernal-318020-05.bin`](https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/C128/kernal-318020-05.bin) | 16 KB (16384 bytes) | optional, C128 mode |
+| C128 BASIC low | [`basiclo-318018-04.bin`](https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/C128/basiclo-318018-04.bin) | 16 KB (16384 bytes) | optional, C128 mode |
+| C128 BASIC high | [`basichi-318019-04.bin`](https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/C128/basichi-318019-04.bin) | 16 KB (16384 bytes) | optional, C128 mode |
+| C128 CHARGEN | [`chargen-390059-01.bin`](https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/C128/chargen-390059-01.bin) | 8 KB (8192 bytes) | optional, C128 mode |
 
 ## Build & run
 

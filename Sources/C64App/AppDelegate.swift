@@ -31,6 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var fastLoadItem: NSMenuItem!
     var borderItems: [NSMenuItem] = []
     var standardItems: [NSMenuItem] = []
+    var modelItems: [NSMenuItem] = []
 
     /// Border sizes: full PAL picture, a thin border, or just the 320×200 screen.
     static let borderCrops: [(String, CGRect)] = [
@@ -62,6 +63,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             c64.standard = std
         }
         for item in standardItems { item.state = item.representedObject as? String == c64.standard.rawValue ? .on : .off }
+        if UserDefaults.standard.string(forKey: "Model") == "c128", let c128 = roms.c128 { c64.setC128(c128) }
+        updateModelItems(c128: c64.isC128)
         runner = EmulatorRunner(c64: c64, audio: audio)
         modemLink = ModemLink(runner: runner)
         applyModemPort(C64.ModemPort(rawValue: UserDefaults.standard.string(forKey: "ModemPort") ?? "") ?? .userPort)
@@ -77,7 +80,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window = NSWindow(contentRect: NSRect(origin: .zero, size: size),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable],
                           backing: .buffered, defer: false)
-        window.title = "C64"
+        window.title = baseTitle
         window.contentAspectRatio = size
         window.delegate = self
         view = EmulatorView(frame: NSRect(origin: .zero, size: size))
@@ -344,6 +347,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func toggleTapeWarp(_ sender: NSMenuItem) {
         runner.warpWhileTape.toggle()
         sender.state = runner.warpWhileTape ? .on : .off
+    }
+
+    // MARK: - Model
+
+    /// Boots the machine as a Commodore 64 or a Commodore 128 (C128 mode, 40 columns on the VIC-II).
+    @objc func setModel(_ sender: NSMenuItem) {
+        let wantC128 = sender.representedObject as? String == "c128"
+        guard sender.state != .on else { return }
+        var c128: C128ROMs?
+        if wantC128 {
+            guard let r = ROMSet.load()?.c128 else {
+                let alert = NSAlert()
+                alert.messageText = "C128 ROMs not found"
+                alert.informativeText = """
+                Put the C128 ROMs into \(ROMSet.userROMDirectory.path):
+                kernal-318020-05.bin (16 KB), basiclo-318018-04.bin (16 KB), \
+                basichi-318019-04.bin (16 KB) and chargen-390059-01.bin (8 KB).
+                """
+                alert.runModal()
+                return
+            }
+            c128 = r
+        }
+        let name = wantC128 ? "Commodore 128" : "Commodore 64"
+        let alert = NSAlert()
+        alert.messageText = "Restart as a \(name)?"
+        alert.informativeText = "The computer will restart. Anything in memory that isn't saved will be lost."
+        alert.addButton(withTitle: "Restart")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        UserDefaults.standard.set(wantC128 ? "c128" : "c64", forKey: "Model")
+        updateModelItems(c128: wantC128)
+        runner.perform { $0.setC128(c128) }
+    }
+
+    private func updateModelItems(c128: Bool) {
+        for item in modelItems { item.state = (item.representedObject as? String == "c128") == c128 ? .on : .off }
+        baseTitle = c128 ? "C128" : "C64"
+        window?.title = baseTitle
     }
 
     // MARK: - Video standard
@@ -659,7 +701,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         standardItems.forEach(standardMenu.addItem)
         let standardItem = NSMenuItem(title: "Video Standard", action: nil, keyEquivalent: "")
         standardItem.submenu = standardMenu
+        modelItems = [("Commodore 64", "c64"), ("Commodore 128", "c128")].map {
+            let item = mi($0.0, #selector(setModel(_:)))
+            item.representedObject = $0.1
+            return item
+        }
         add("Machine", [
+            modelItems[0],
+            modelItems[1],
+            .separator(),
             standardItem,
             .separator(),
             mi("Reset", #selector(softReset(_:)), "r"),
