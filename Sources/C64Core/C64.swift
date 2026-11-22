@@ -28,6 +28,10 @@ public final class C64: CPUBus {
     /// Keyboard matrix: keyMatrix[row] has bit `col` set while that key is held.
     /// Row = CIA1 port A bit, column = CIA1 port B bit.
     var keyMatrix = [UInt8](repeating: 0, count: 8)
+    var keyPressFrame = [Int](repeating: -100, count: 65)
+    var desiredKeyState = [Bool](repeating: false, count: 65)
+    var keyEvents: [(C64Key, Bool)] = []
+    var lastKeyPressFrame = -100
     public var restorePressed = false
     /// Joystick state, bits: 0 up, 1 down, 2 left, 3 right, 4 fire (1 = active).
     public var joystick1: UInt8 = 0
@@ -41,6 +45,10 @@ public final class C64: CPUBus {
     public var cassetteMotor: Bool { (portData & portDDR & 0x20) == 0 && portDDR & 0x20 != 0 }
     /// Extra devices clocked with the machine (drives, datasette).
     public var clockedDevices: [(C64) -> Void] = []
+    /// Cycle count at the last reset.
+    public private(set) var resetCycle: UInt64 = 0
+    /// PETSCII bytes waiting to be fed into the keyboard buffer.
+    var typeQueue: [UInt8] = []
 
     public init(basic: [UInt8], kernal: [UInt8], chargen: [UInt8]) {
         self.basic = basic
@@ -87,6 +95,8 @@ public final class C64: CPUBus {
         cia2.reset()
         iec.reset()
         cpu.reset()
+        resetCycle = cycles
+        typeQueue.removeAll()
     }
 
     // MARK: - Running
@@ -95,6 +105,8 @@ public final class C64: CPUBus {
     public func runFrame() {
         let start = vic.frameCount
         while vic.frameCount == start { cpu.step() }
+        feedTypeQueue()
+        processKeyEvents()
     }
 
     /// Runs at least the given number of CPU cycles.
@@ -210,14 +222,43 @@ public final class C64: CPUBus {
 
     // MARK: - Keyboard / joysticks
 
+    /// Presses or releases a key. Events are queued and applied in order at frame
+    /// boundaries, spaced so the KERNAL's 60 Hz keyboard scan sees every tap even when the
+    /// host delivers press/release faster than a human would (pasted text, key automation).
     public func setKey(_ key: C64Key, pressed: Bool) {
+        let idx = key.matrixIndex
+        guard desiredKeyState[idx] != pressed else { return }
+        desiredKeyState[idx] = pressed
+        keyEvents.append((key, pressed))
+        processKeyEvents()
+    }
+
+    private func setMatrix(_ key: C64Key, _ pressed: Bool) {
         if key == .restore { restorePressed = pressed; return }
         let (row, col) = key.matrix
         if pressed { keyMatrix[row] |= 1 << col } else { keyMatrix[row] &= ~(1 << col) }
     }
 
+    private func processKeyEvents() {
+        let frame = vic.frameCount
+        while let (key, pressed) = keyEvents.first {
+            let idx = key.matrixIndex
+            if pressed {
+                if frame - lastKeyPressFrame < 3 { break }
+                lastKeyPressFrame = frame
+                keyPressFrame[idx] = frame
+            } else if frame - keyPressFrame[idx] < 2 {
+                break
+            }
+            setMatrix(key, pressed)
+            keyEvents.removeFirst()
+        }
+    }
+
     public func releaseAllKeys() {
         for i in 0..<8 { keyMatrix[i] = 0 }
+        keyEvents.removeAll()
+        for i in 0..<desiredKeyState.count { desiredKeyState[i] = false }
         restorePressed = false
     }
 
@@ -266,6 +307,27 @@ public final class C64: CPUBus {
             n += 1
         }
         ram[0xC6] = UInt8(n)
+    }
+
+    /// Queues text to be typed (ASCII; converted to PETSCII), fed as the buffer empties.
+    public func queueTyping(_ text: String) {
+        for ch in text.unicodeScalars {
+            switch ch.value {
+            case 10, 13: typeQueue.append(13)
+            case 0x61...0x7A: typeQueue.append(UInt8(ch.value - 0x20))
+            case 0x41...0x5A: typeQueue.append(UInt8(ch.value + 0x80))
+            case 0x20...0x40, 0x5B...0x5D: typeQueue.append(UInt8(ch.value))
+            default: break
+            }
+        }
+    }
+
+    private func feedTypeQueue() {
+        guard !typeQueue.isEmpty, ram[0xC6] == 0 else { return }
+        let n = min(9, typeQueue.count)
+        for i in 0..<n { ram[0x277 + i] = typeQueue[i] }
+        ram[0xC6] = UInt8(n)
+        typeQueue.removeFirst(n)
     }
 
     /// Reads the text screen at $0400 as ASCII lines (for tests and debugging).

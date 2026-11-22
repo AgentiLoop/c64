@@ -253,8 +253,9 @@ public final class VICII {
         }
 
         // Memory accesses for this cycle
-        if badline && cycle >= 15 && cycle <= 54 && vmli < 40 { cAccess() }
+        // g-access of column i-1 precedes the c-access of column i in the same cycle.
         if cycle >= 16 && cycle <= 55 { gAccess() }
+        if badline && cycle >= 15 && cycle <= 54 && vmli < 40 { cAccess() }
         for n in 0..<8 where VICII.spriteCycle(n) == cycle { spriteFetchCycle(n) }
 
         // Pixel output

@@ -10,8 +10,13 @@ public enum C64Key: CaseIterable {
     case k1, leftArrow, control, k2, space, commodore, q, runStop
     case restore
 
+    static let indices: [C64Key: Int] = Dictionary(uniqueKeysWithValues: allCases.enumerated().map { ($1, $0) })
+
+    /// Position in the matrix, 0...63 (64 = RESTORE, which is not part of the matrix).
+    public var matrixIndex: Int { C64Key.indices[self]! }
+
     public var matrix: (row: Int, col: Int) {
-        let idx = C64Key.allCases.firstIndex(of: self)!
+        let idx = matrixIndex
         return (idx / 8, idx % 8)
     }
 }
