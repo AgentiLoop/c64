@@ -73,7 +73,7 @@ C64_SLOW_TESTS=1 swift test -c release -Xswiftc -enable-testing --filter testFor
 
 ## License
 
-MIT, see [LICENSE](LICENSE). Commodore ROMs and game software are not included and remain the
+The C64 emulator source in this repository is MIT licensed, see [LICENSE](LICENSE). This license does not cover AgentiLoop Agent!, the tool it was made with. Commodore ROMs and game software are not included and remain the
 property of their owners.
 
 ## Website
