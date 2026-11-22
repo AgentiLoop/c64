@@ -46,13 +46,17 @@ extension C64 {
         let file = read(entry)
         guard file.count >= 2 else { return false }
 
-        var addr = ram[0xB9] == 0 ? Int(ram[0xC3]) | Int(ram[0xC4]) << 8 : Int(file[0]) | Int(file[1]) << 8
-        for b in file.dropFirst(2) where addr <= 0xFFFF {
-            if addr < 2 { ram[addr] = b } else { poke(UInt16(addr), b) }
-            addr += 1
+        // Store through the $AE/$AF pointer like the KERNAL (STA ($AE),Y / INC $AE / INC $AF):
+        // the address wraps at $FFFF, and a file that overwrites $AE/$AF redirects the rest.
+        let start = ram[0xB9] == 0 ? Int(ram[0xC3]) | Int(ram[0xC4]) << 8 : Int(file[0]) | Int(file[1]) << 8
+        ram[0xAE] = UInt8(start & 0xFF); ram[0xAF] = UInt8(start >> 8)
+        for b in file.dropFirst(2) {
+            let a = (Int(ram[0xAE]) | Int(ram[0xAF]) << 8) & 0xFFFF
+            if a < 2 { ram[a] = b } else { poke(UInt16(a), b) }
+            ram[0xAE] &+= 1
+            if ram[0xAE] == 0 { ram[0xAF] &+= 1 }
         }
-        let end = min(addr, 0xFFFF)
-        ram[0xAE] = UInt8(end & 0xFF); ram[0xAF] = UInt8(end >> 8)
+        let end = Int(ram[0xAE]) | Int(ram[0xAF]) << 8
         ram[0x90] = 0x40                                        // status: end of file
         // Return from LOAD with carry clear and X/Y = end address (pull the JSR return).
         cpu.x = UInt8(end & 0xFF); cpu.y = UInt8(end >> 8)
