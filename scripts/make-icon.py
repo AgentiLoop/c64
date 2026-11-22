@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Draws the C64 app icon (rainbow background, pixel "c64") and writes Resources/AppIcon.icns.
+"""Draws the C64 app icon (rainbow background, pixel "C64") and writes Resources/AppIcon.icns.
 Usage: python3 scripts/make-icon.py   (needs Pillow and macOS iconutil)"""
 import os, shutil, subprocess
 from PIL import Image, ImageDraw
@@ -9,7 +9,7 @@ OUT = os.path.join(ROOT, "Resources")
 S = 1024
 
 GLYPHS = {
-    "c": ["........", "........", "..####..", ".##.....", ".##.....", ".##.....", "..####..", "........"],
+    "C": ["..####..", ".##..##.", ".##.....", ".##.....", ".##.....", ".##..##.", "..####..", "........"],
     "6": ["...###..", "..##....", ".##.....", ".#####..", ".##..##.", ".##..##.", "..####..", "........"],
     "4": ["....##..", "...###..", "..####..", ".##.##..", ".######.", "....##..", "....##..", "........"],
 }
@@ -33,11 +33,11 @@ def icon():
     img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
     img.paste(bg, (0, 0), mask)
 
-    # Pixel "c64": each glyph trimmed to its ink columns, 1 pixel apart, 38 px per pixel, with a dark drop shadow.
+    # Pixel "C64": each glyph trimmed to its ink columns, 1 pixel apart, 38 px per pixel, with a dark drop shadow.
     px = 38
-    cols = {ch: [c for c in range(8) if any(row[c] == "#" for row in GLYPHS[ch])] for ch in "c64"}
+    cols = {ch: [c for c in range(8) if any(row[c] == "#" for row in GLYPHS[ch])] for ch in "C64"}
     starts, x0 = [], 0
-    for ch in "c64":
+    for ch in "C64":
         starts.append(x0)
         x0 += len(cols[ch]) + 1
     w, h = (x0 - 1) * px, 8 * px
@@ -45,7 +45,7 @@ def icon():
     text = Image.new("RGBA", (S, S), (0, 0, 0, 0))
     td = ImageDraw.Draw(text)
     for off, col in (((12, 14), (0, 0, 0, 190)), ((0, 0), (255, 255, 255, 255))):
-        for ci, ch in enumerate("c64"):
+        for ci, ch in enumerate("C64"):
             for r, row in enumerate(GLYPHS[ch]):
                 for k, c in enumerate(cols[ch]):
                     if row[c] == "#":
