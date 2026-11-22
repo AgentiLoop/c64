@@ -6,6 +6,8 @@ which keeps the app up to date from GitHub releases.
 
 **Website:** https://c64.xcf.ai · **Download:** [latest release](https://github.com/AgentiLoop/c64/releases/latest) · Built with [AgentiLoop Agent!](https://agentiloop.ai)
 
+<img width="1223" height="892" alt="image" src="https://github.com/user-attachments/assets/9fa98972-2dbe-49ee-b2ed-f996d7b9961e" />
+
 ![Screen recording of the C64 app running](docs/demo.gif)
 
 ## Quick start
