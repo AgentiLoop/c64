@@ -23,4 +23,26 @@ final class UserDiskTests: XCTestCase {
         }
         print("SCREEN\n" + c64.screenText().joined(separator: "\n"))
     }
+
+    /// Same disk with instant loading: reports how many frames until the game's code runs.
+    func testFastLoadUserDisk() throws {
+        guard let path = ProcessInfo.processInfo.environment["C64_D64"],
+              let data = FileManager.default.contents(atPath: path),
+              let img = D64Image(data: [UInt8](data)),
+              let roms = ROMSet.load() else { throw XCTSkip("no disk") }
+        let c64 = C64(roms: roms)
+        c64.fastLoad = true
+        c64.drive8!.insert(GCRDisk(d64: img))
+        C64Autostart.ensureBooted(c64)
+        c64.queueTyping("LOAD\"*\",8,1\nRUN\n")
+        var started = -1
+        for f in 0..<1500 {
+            c64.runFrame()
+            if started < 0 && c64.cpu.pc < 0xA000 && c64.cpu.pc > 0x0900 { started = f }
+        }
+        print("FASTLOAD game code reached after \(started) frames (\(Double(started) / 50) s)")
+        XCTAssertGreaterThanOrEqual(started, 0)
+        XCTAssertLessThan(started, 500)
+        XCTAssertFalse(c64.cpu.jammed)
+    }
 }

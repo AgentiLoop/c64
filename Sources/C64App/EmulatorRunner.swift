@@ -15,6 +15,8 @@ final class EmulatorRunner {
     var warp = false
     /// Run at full speed while the Datasette motor is turning.
     var warpWhileTape = true
+    /// Run at full speed while a disk drive motor is turning.
+    var warpWhileDisk = true
     var paused = false
 
     init(c64: C64, audio: AudioOutput) {
@@ -62,7 +64,9 @@ final class EmulatorRunner {
             }
 
             c64.runFrame()
+            let diskBusy = (c64.drive8?.motorOn ?? false) || (c64.drive9?.motorOn ?? false)
             let warp = self.warp || (warpWhileTape && c64.datasette.mode != .stopped && c64.cassetteMotor)
+                || (warpWhileDisk && diskBusy)
             let samples = c64.sid.takeSamples()
             frameCounter += 1
             if !warp { audio.ring.write(samples) }

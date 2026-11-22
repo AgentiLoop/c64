@@ -25,12 +25,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// The TAP file in the Datasette (recordings are written back to it).
     var tapeURL: URL?
     var pendingOpen: URL?
+    var fastLoadItem: NSMenuItem!
+    var diskWarpItem: NSMenuItem!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMenu()
         guard let roms = loadROMs() else { NSApp.terminate(nil); return }
         let c64 = C64(roms: roms)
+        c64.fastLoad = UserDefaults.standard.object(forKey: "FastLoad") as? Bool ?? true
         runner = EmulatorRunner(c64: c64, audio: audio)
+        runner.warpWhileDisk = UserDefaults.standard.object(forKey: "WarpWhileDisk") as? Bool ?? true
+        fastLoadItem.state = c64.fastLoad ? .on : .off
+        diskWarpItem.state = runner.warpWhileDisk ? .on : .off
 
         let scale: CGFloat = 2
         let size = NSSize(width: CGFloat(VICII.screenWidth) * scale * 0.94, height: CGFloat(VICII.screenHeight) * scale)
@@ -361,6 +367,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         insertDisk9(image, url: url)
     }
 
+    @objc func toggleFastLoad(_ sender: NSMenuItem) {
+        let on = sender.state != .on
+        sender.state = on ? .on : .off
+        UserDefaults.standard.set(on, forKey: "FastLoad")
+        runner.perform { $0.fastLoad = on }
+    }
+
+    @objc func toggleDiskWarp(_ sender: NSMenuItem) {
+        runner.warpWhileDisk.toggle()
+        sender.state = runner.warpWhileDisk ? .on : .off
+        UserDefaults.standard.set(runner.warpWhileDisk, forKey: "WarpWhileDisk")
+    }
+
     // MARK: - Drive 8
 
     private func insertDisk(_ d: GCRDisk, url: URL?) {
@@ -486,6 +505,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         swapItem = mi("Joystick in Port 1", #selector(swapJoysticks(_:)), "k")
         cursorJoyItem = mi("Cursor Keys Control Joystick", #selector(toggleCursorJoystick(_:)), "u")
         add("Input", [swapItem, cursorJoyItem])
+        fastLoadItem = mi("Instant Load (Skip Disk Wait)", #selector(toggleFastLoad(_:)), "l")
+        diskWarpItem = mi("Warp While Disk Loads", #selector(toggleDiskWarp(_:)))
         add("Drive", [
             mi("Attach Disk to Drive 8…", #selector(attachDisk(_:)), "d"),
             mi("Eject Disk", #selector(ejectDisk(_:)), "e"),
@@ -495,6 +516,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             mi("Attach Disk to Drive 9 (1581)…", #selector(attachDisk9(_:)), "d", [.command, .shift]),
             mi("Eject Drive 9 Disk", #selector(ejectDisk9(_:)), "e", [.command, .shift]),
             mi("New Blank D81…", #selector(newBlankDisk9(_:)), "n", [.command, .shift]),
+            .separator(),
+            fastLoadItem,
+            diskWarpItem,
         ])
         let tapeWarp = mi("Warp While Tape Runs", #selector(toggleTapeWarp(_:)))
         tapeWarp.state = .on

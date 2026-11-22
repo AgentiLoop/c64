@@ -14,6 +14,7 @@ Native Swift/AppKit emulator of a PAL Commodore 64.
 | 1541 drive | True emulation: drive 6502 running the original DOS ROM, 2× VIA 6522, stepper head, GCR disk at the correct zone speeds; reads and writes |
 | Media | D64 (autostart `LOAD"*",8,1` + `RUN`, Drive menu attach/eject/new blank disk, changes written back to the .d64), PRG autostart. T64 autostart, D81 on drive 9 (autostart `LOAD"*",9,1` + `RUN`) |
 | 1581 drive (3.5") | True emulation as device 9: 2 MHz 6502 running the original 1581 DOS ROM, 8520 CIA, WD1772 controller (seek/step/restore, read/write sector, read address with real CRCs, write track so the drive's own `N:` format works), 80 tracks × 2 sides × 10 × 512-byte sectors; D81 attach/eject/new blank, changes written back |
+| Fast loading | Instant Load (KERNAL LOAD trap for drives 8/9, on by default) and automatic warp while a drive motor runs (Drive menu) |
 | Datasette | TAP v0/v1 playback into CIA1 FLAG at cycle precision, recording from the cassette write line (KERNAL SAVE to tape), TAP autostart (`LOAD` + `RUN`), Tape menu (insert/new/play/record/stop/rewind/eject), automatic warp while the tape motor runs, recordings written back to the .tap |
 
 ## ROMs
@@ -47,6 +48,7 @@ C64_SLOW_TESTS=1 swift test -c release -Xswiftc -enable-testing --filter testFor
 | ⌘V | Paste text as typing |
 | ⌘J | Warp mode |
 | ⌘D / ⌘E / ⌘N | Attach / eject / create D64 in drive 8 |
+| ⌘L | Instant Load on/off (copies files straight from the disk image; directory, custom loaders still use the real drive) |
 | ⌘⇧D / ⌘⇧E / ⌘⇧N | Attach / eject / create D81 in drive 9 (1581) |
 | ⌘T / ⌘⇧T | Insert TAP / new blank TAP |
 | ⌘⌥1–4 | Tape play / record / stop / rewind |
