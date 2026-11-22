@@ -1,9 +1,14 @@
 #!/bin/zsh
-# Builds the release binary and wraps it in build/C64.app.
+# Builds the release binary (Universal: arm64 + x86_64) and wraps it in build/C64.app.
+# Signs with the "Developer ID Application" identity (hardened runtime) when it is in the
+# keychain, otherwise ad-hoc (anyone building from source).
+#   ./scripts/make-app.sh             # build + sign
+#   ./scripts/make-app.sh --release   # also notarize, staple and zip to build/C64.app.zip
+# Overrides: SIGN_ID=..., NOTARY_PROFILE=... (default "App Store Connect Profile").
 set -e
 cd "$(dirname "$0")/.."
-swift build -c release
-BIN="$(swift build -c release --show-bin-path)/C64Emu"
+swift build -c release --arch arm64 --arch x86_64
+BIN="$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)/C64Emu"
 APP=build/C64.app
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
@@ -40,5 +45,26 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 </dict>
 </plist>
 PLIST
-codesign --force --sign - "$APP" >/dev/null 2>&1 || true
-echo "Built $APP"
+echo "APPL????" > "$APP/Contents/PkgInfo"
+SIGN_ID="${SIGN_ID:-$(security find-identity -v -p codesigning 2>/dev/null | sed -n 's/.*"\(Developer ID Application:[^"]*\)".*/\1/p' | head -1)}"
+if [ -n "$SIGN_ID" ] && [ "$SIGN_ID" != "-" ]; then
+  codesign --force --options runtime --timestamp --sign "$SIGN_ID" "$APP"
+else
+  SIGN_ID="-"
+  codesign --force --sign - "$APP"
+fi
+codesign --verify --strict "$APP"
+echo "Built $APP (signed: $SIGN_ID)"
+
+if [ "$1" = "--release" ]; then
+  [ "$SIGN_ID" != "-" ] || { echo "--release needs a Developer ID Application identity" >&2; exit 1; }
+  ZIP=build/C64.app.zip
+  rm -f "$ZIP"
+  ditto -c -k --keepParent "$APP" "$ZIP"
+  xcrun notarytool submit "$ZIP" --keychain-profile "${NOTARY_PROFILE:-App Store Connect Profile}" --wait
+  xcrun stapler staple "$APP"
+  rm -f "$ZIP"
+  ditto -c -k --keepParent "$APP" "$ZIP"
+  spctl -a -vv -t exec "$APP"
+  echo "Notarized and stapled: $ZIP"
+fi
