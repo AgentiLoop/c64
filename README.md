@@ -11,7 +11,8 @@ Native Swift/AppKit emulator of a PAL Commodore 64.
 | SID (6581) | 3 voices, all waveforms, sync/ring, ADSR with real rate tables, resonant multimode filter, digi (volume DC) |
 | CIA 6526 ×2 | Timers A/B, TOD, ICR, keyboard/joystick ports, VIC bank, IEC lines, NMI |
 | Keyboard | Mac keyboard → C64 matrix (symbolic punctuation), RESTORE, joystick on numpad / cursor keys / game controllers |
-| Media | PRG autostart (drag & drop or File ▸ Open). Disk (1541/1581), tape and cartridges are in progress |
+| 1541 drive | True emulation: drive 6502 running the original DOS ROM, 2× VIA 6522, stepper head, GCR disk at the correct zone speeds; reads and writes |
+| Media | D64 (autostart `LOAD"*",8,1` + `RUN`, Drive menu attach/eject/new blank disk, changes written back to the .d64), PRG autostart. Tape and 1581 are in progress |
 
 ## ROMs
 
@@ -42,3 +43,4 @@ swift test -c release -Xswiftc -enable-testing   # unit + boot tests
 | Numpad 8/2/4/6, 0 or Right Option | Joystick (port 2 by default, ⌘K swaps) |
 | ⌘V | Paste text as typing |
 | ⌘J | Warp mode |
+| ⌘D / ⌘E / ⌘N | Attach / eject / create D64 in drive 8 |

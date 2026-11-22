@@ -13,6 +13,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var warpItem: NSMenuItem!
     var cursorJoyItem: NSMenuItem!
     var swapItem: NSMenuItem!
+    /// The D64 file currently in drive 8 and its GCR disk (written back when changed).
+    var diskURL: URL?
+    var disk: GCRDisk?
+    var baseTitle = "C64"
+    var lastLED = false
+    var pendingOpen: URL?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMenu()
@@ -44,13 +50,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         runner.onFrame = { [weak self] in self?.frameTick() }
         audio.start()
         runner.start()
+        if let url = pendingOpen { pendingOpen = nil; open(url: url) }
         NSApp.activate(ignoringOtherApps: true)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 
+    func applicationWillTerminate(_ notification: Notification) {
+        runner?.stop()
+        saveDiskIfNeeded()
+    }
+
     func application(_ sender: NSApplication, openFile filename: String) -> Bool {
-        open(url: URL(fileURLWithPath: filename))
+        let url = URL(fileURLWithPath: filename)
+        // Finder may deliver the file before the machine exists; open it after launch.
+        if runner == nil { pendingOpen = url; return true }
+        open(url: url)
         return true
     }
 
@@ -63,6 +78,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func frameTick() {
         view.refresh()
+        let led = runner.c64.drive8?.ledOn ?? false
+        if led != lastLED {
+            lastLED = led
+            window.title = (led ? "● " : "") + baseTitle
+        }
         var bits = keyMapper.joystickBits
         for pad in GCController.controllers() {
             if let gp = pad.extendedGamepad {
@@ -141,6 +161,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let bytes = [UInt8](data)
         NSDocumentController.shared.noteNewRecentDocumentURL(url)
         switch url.pathExtension.lowercased() {
+        case "d64":
+            guard runner.c64.drive8 != nil else {
+                let alert = NSAlert()
+                alert.messageText = "1541 drive ROM not found"
+                alert.informativeText = "Put dos1541*.bin (16 KB) into \(ROMSet.userROMDirectory.path)."
+                alert.runModal()
+                return
+            }
+            guard let image = D64Image(data: bytes) else {
+                let alert = NSAlert()
+                alert.messageText = "Not a valid D64 image"
+                alert.informativeText = url.lastPathComponent
+                alert.runModal()
+                return
+            }
+            insertDisk(GCRDisk(d64: image), url: url)
+            runner.perform { c64 in
+                C64Autostart.ensureBooted(c64)
+                c64.queueTyping("LOAD\"*\",8,1\nRUN\n")
+            }
         case "prg":
             runner.perform { c64 in
                 C64Autostart.ensureBooted(c64)
@@ -153,7 +193,58 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             alert.informativeText = url.lastPathComponent
             alert.runModal()
         }
-        window.title = "C64 — \(url.lastPathComponent)"
+        baseTitle = "C64 — \(url.lastPathComponent)"
+        window.title = baseTitle
+    }
+
+    // MARK: - Drive 8
+
+    private func insertDisk(_ d: GCRDisk, url: URL?) {
+        saveDiskIfNeeded()
+        disk = d
+        diskURL = url
+        runner.perform { $0.drive8?.insert(d) }
+    }
+
+    /// Writes changed sectors back to the D64 file.
+    private func saveDiskIfNeeded() {
+        guard let d = disk, d.dirty, let url = diskURL else { return }
+        let image = d.toD64()
+        do { try Data(image.data).write(to: url) } catch { NSLog("Saving disk failed: \(error)") }
+    }
+
+    @objc func attachDisk(_ sender: Any?) {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: "d64")].compactMap { $0 }
+        guard panel.runModal() == .OK, let url = panel.url,
+              let data = FileManager.default.contents(atPath: url.path),
+              let image = D64Image(data: [UInt8](data)) else { return }
+        insertDisk(GCRDisk(d64: image), url: url)
+        NSDocumentController.shared.noteNewRecentDocumentURL(url)
+        baseTitle = "C64 — \(url.lastPathComponent)"
+        window.title = baseTitle
+    }
+
+    @objc func ejectDisk(_ sender: Any?) {
+        saveDiskIfNeeded()
+        disk = nil
+        diskURL = nil
+        runner.perform { _ = $0.drive8?.eject() }
+        baseTitle = "C64"
+        window.title = baseTitle
+    }
+
+    @objc func newBlankDisk(_ sender: Any?) {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: "d64")].compactMap { $0 }
+        panel.nameFieldStringValue = "blank.d64"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let name = url.deletingPathExtension().lastPathComponent
+        let image = D64Image.blank(name: String(name.prefix(16)), id: "01")
+        do { try Data(image.data).write(to: url) } catch { return }
+        insertDisk(GCRDisk(d64: image), url: url)
+        baseTitle = "C64 — \(url.lastPathComponent)"
+        window.title = baseTitle
     }
 
     @objc func pasteText(_ sender: Any?) {
@@ -231,6 +322,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         swapItem = mi("Joystick in Port 1", #selector(swapJoysticks(_:)), "k")
         cursorJoyItem = mi("Cursor Keys Control Joystick", #selector(toggleCursorJoystick(_:)), "u")
         add("Input", [swapItem, cursorJoyItem])
+        add("Drive", [
+            mi("Attach Disk to Drive 8…", #selector(attachDisk(_:)), "d"),
+            mi("Eject Disk", #selector(ejectDisk(_:)), "e"),
+            .separator(),
+            mi("New Blank Disk…", #selector(newBlankDisk(_:)), "n"),
+        ])
         let windowMenu = NSMenu(title: "Window")
         windowMenu.addItem(mi("Minimize", #selector(NSWindow.performMiniaturize(_:)), "m"))
         windowMenu.addItem(mi("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]))

@@ -39,6 +39,10 @@ public final class C64: CPUBus {
 
     /// IEC serial bus shared with disk drives.
     public let iec = IECBus()
+    /// Disk drive 8 (true 1541 emulation), if a drive ROM is available.
+    public var drive8: Drive1541? {
+        didSet { iec.devices = drive8.map { [$0] } ?? [] }
+    }
     /// Cassette sense line (true = PLAY pressed).
     public var cassetteSense = false
     /// Cassette motor control output (true = motor on).
@@ -61,6 +65,10 @@ public final class C64: CPUBus {
 
     public convenience init(roms: ROMSet) {
         self.init(basic: roms.basic, kernal: roms.kernal, chargen: roms.chargen)
+        if let r = roms.drive1541 {
+            drive8 = Drive1541(rom: r, iec: iec)
+            iec.devices = [drive8!]   // didSet does not fire inside an initializer
+        }
     }
 
     private func wire() {
@@ -94,6 +102,7 @@ public final class C64: CPUBus {
         cia1.reset()
         cia2.reset()
         iec.reset()
+        drive8?.reset()
         cpu.reset()
         resetCycle = cycles
         typeQueue.removeAll()
@@ -121,6 +130,7 @@ public final class C64: CPUBus {
         cia2.tick()
         sid.tick()
         for d in clockedDevices { d(self) }
+        if let d = drive8 { d.clockC64Cycle() }
         cycles &+= 1
         todCounter += 1
         if todCounter >= C64.palClock / 50 {
@@ -315,7 +325,7 @@ public final class C64: CPUBus {
             switch ch.value {
             case 10, 13: typeQueue.append(13)
             case 0x61...0x7A: typeQueue.append(UInt8(ch.value - 0x20))
-            case 0x41...0x5A: typeQueue.append(UInt8(ch.value + 0x80))
+            case 0x41...0x5A: typeQueue.append(UInt8(ch.value))   // both cases → unshifted letters
             case 0x20...0x40, 0x5B...0x5D: typeQueue.append(UInt8(ch.value))
             default: break
             }
