@@ -13,8 +13,9 @@ and 1581 disk drives and the Datasette. No third-party dependencies.
    or build it yourself (see [Build & run](#build--run)). The app is ad-hoc signed: the first time,
    right-click it and choose **Open**.
 2. Supply the Commodore ROMs (see [ROMs](#roms)).
-3. Drop a `.d64`, `.d81`, `.prg`, `.t64` or `.tap` on the window, or use the Drive and Tape menus.
-   Disks autostart with `LOAD"*",8,1` + `RUN`.
+3. **Drag and drop a `.d64` disk image onto the C64 screen** to insert it in drive 8 and autostart it
+   (`LOAD"*",8,1` + `RUN`). `.d81`, `.prg`, `.t64` and `.tap` files work the same way, or use the
+   Drive and Tape menus.
 
 Requires macOS 13 or later.
 
