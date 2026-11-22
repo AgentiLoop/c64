@@ -29,7 +29,7 @@
   h2 { font-size: 1rem; margin: 40px 0 14px; color: #a5a0ff; }
   .boot { color: #a5a0ff; margin: 0 0 32px; white-space: pre; overflow-x: auto; }
   a { color: #fff; }
-  img.shot { width: 100%; height: auto; border-radius: 4px; display: block; margin: 20px 0; }
+  .shot { width: 100%; height: auto; border-radius: 4px; display: block; margin: 20px 0; background: #000; }
   .buttons { display: flex; gap: 12px; flex-wrap: wrap; margin: 20px 0; }
   .btn { display: inline-block; padding: 11px 20px; border-radius: 4px; text-decoration: none;
          background: #a5a0ff; color: var(--c64-blue); font-weight: 600; }
@@ -68,7 +68,8 @@ READY.
     <a class="btn alt" href="https://github.com/AgentiLoop/c64">Source on GitHub</a>
   </div>
 
-  <img class="shot" src="screenshot.jpg" alt="The C64 app at the BASIC READY prompt with a HELLOWORLD program" width="1017" height="752">
+  <video class="shot" src="demo.mp4" poster="screenshot.jpg" width="1280" height="878"
+         autoplay muted loop playsinline controls aria-label="Screen recording of the C64 app running"></video>
 
   <h2>What's emulated</h2>
   <table>
