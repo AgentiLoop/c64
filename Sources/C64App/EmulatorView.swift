@@ -12,7 +12,8 @@ final class EmulatorView: NSView {
         super.init(frame: frame)
         wantsLayer = true
         layer?.magnificationFilter = .nearest
-        layer?.contentsGravity = .resizeAspect
+        // Fill the whole view: the window keeps the C64's (slightly narrow) pixel aspect.
+        layer?.contentsGravity = .resize
         layer?.backgroundColor = NSColor.black.cgColor
         registerForDraggedTypes([.fileURL])
     }
