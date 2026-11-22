@@ -28,4 +28,22 @@ final class SIDTests: XCTestCase {
         for _ in 0..<50_000 { sid.tick() }
         XCTAssertEqual(sid.voices[0].level, 0)
     }
+
+    /// Gate on then straight off while the envelope is at 0 used to underflow and crash.
+    func testQuickGateToggleAtZeroLevel() {
+        let sid = SID()
+        sid.write(0x18, 0x0F)
+        sid.write(0x05, 0x00); sid.write(0x06, 0x00)
+        for _ in 0..<1000 {
+            sid.write(0x04, 0x11)
+            sid.write(0x04, 0x10)
+            for _ in 0..<40 { sid.tick() }
+            sid.write(0x04, 0x11)
+            for _ in 0..<40 { sid.tick() }
+            sid.write(0x06, 0xF0)
+            for _ in 0..<40 { sid.tick() }
+            sid.write(0x06, 0x00)
+        }
+        XCTAssertLessThanOrEqual(sid.voices[0].level, 0xFF)
+    }
 }

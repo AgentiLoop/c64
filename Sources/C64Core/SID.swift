@@ -78,12 +78,12 @@ public final class SID {
             if holdZero { return }
             switch state {
             case .attack:
-                level = (level + 1) & 0xFF
+                level = (level &+ 1) & 0xFF
                 if level == 0xFF { state = .decaySustain }
             case .decaySustain:
-                if level != UInt32(sustainRelease >> 4) * 0x11 { level = (level - 1) & 0xFF }
+                if level != UInt32(sustainRelease >> 4) * 0x11 && level > 0 { level = (level &- 1) & 0xFF }
             case .release:
-                level = (level - 1) & 0xFF
+                if level > 0 { level = (level &- 1) & 0xFF }
             }
             switch level {
             case 0xFF: expPeriod = 1
