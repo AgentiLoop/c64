@@ -14,7 +14,7 @@ final class ModemLink {
 
     init(runner: EmulatorRunner) {
         self.runner = runner
-        let modem = UserPortModem()
+        let modem = HayesModem()
         modem.onDial = { [weak self] host, port in self?.queue.async { self?.connect(host, port) } }
         modem.onSend = { [weak self] byte in self?.queue.async { self?.telnet?.send([byte]) } }
         modem.onHangUp = { [weak self] in self?.queue.async { self?.close() } }

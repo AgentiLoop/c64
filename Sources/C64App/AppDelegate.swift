@@ -42,6 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// User-port modem connected to the internet (telnet BBSes).
     var modemLink: ModemLink!
     var hangUpItem: NSMenuItem!
+    var modemPortItems: [NSMenuItem] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMenu()
@@ -63,6 +64,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         for item in standardItems { item.state = item.representedObject as? String == c64.standard.rawValue ? .on : .off }
         runner = EmulatorRunner(c64: c64, audio: audio)
         modemLink = ModemLink(runner: runner)
+        applyModemPort(C64.ModemPort(rawValue: UserDefaults.standard.string(forKey: "ModemPort") ?? "") ?? .userPort)
         modemLink.onStatus = { [weak self] host in
             self?.hangUpItem.title = host.map { "Hang Up (\($0))" } ?? "Hang Up"
         }
@@ -527,10 +529,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
-    /// Autostarts the bundled BASIC terminal (1200 baud on the user port).
+    /// Plugs the modem into the user port, a SwiftLink or a Turbo232 cartridge.
+    @objc func setModemPort(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String, let port = C64.ModemPort(rawValue: raw) else { return }
+        applyModemPort(port)
+    }
+
+    private func applyModemPort(_ port: C64.ModemPort) {
+        UserDefaults.standard.set(port.rawValue, forKey: "ModemPort")
+        for item in modemPortItems { item.state = item.representedObject as? String == port.rawValue ? .on : .off }
+        runner.perform { $0.modemPort = port }
+    }
+
+    /// Autostarts the bundled BASIC terminal (1200 baud, KERNAL RS-232), which needs the user port.
     @objc func loadTerminal(_ sender: Any?) {
         guard let url = Bundle.main.url(forResource: "TERM", withExtension: "PRG"),
               let data = FileManager.default.contents(atPath: url.path) else { return }
+        applyModemPort(.userPort)
         runner.perform { c64 in
             C64Autostart.ensureBooted(c64)
             c64.loadPRG([UInt8](data))
@@ -699,8 +714,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let phoneBookItem = NSMenuItem(title: "Phone Book", action: nil, keyEquivalent: "")
         phoneBookItem.submenu = phoneBook
         hangUpItem = mi("Hang Up", #selector(hangUp(_:)))
+        let ports: [(String, C64.ModemPort)] = [
+            ("User Port (300–2400 baud)", .userPort),
+            ("SwiftLink $DE00 (up to 38,400)", .swiftLink),
+            ("Turbo232 $DE00 (up to 230,400)", .turbo232),
+        ]
+        modemPortItems = ports.map {
+            let item = mi($0.0, #selector(setModemPort(_:)))
+            item.representedObject = $0.1.rawValue
+            return item
+        }
+        let portMenu = NSMenu(title: "Interface")
+        modemPortItems.forEach(portMenu.addItem)
+        let portItem = NSMenuItem(title: "Interface", action: nil, keyEquivalent: "")
+        portItem.submenu = portMenu
         add("Modem", [
-            mi("Load Terminal Program", #selector(loadTerminal(_:))),
+            portItem,
+            mi("Load Terminal Program (User Port)", #selector(loadTerminal(_:))),
             .separator(),
             phoneBookItem,
             mi("Dial Address…", #selector(dialAddress(_:))),

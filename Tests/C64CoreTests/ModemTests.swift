@@ -7,10 +7,10 @@ final class ModemTests: XCTestCase {
     var sent: [UInt8] = []
     var hungUp = 0
 
-    func makeMachine() throws -> (C64, UserPortModem) {
+    func makeMachine() throws -> (C64, HayesModem) {
         guard let roms = ROMSet.load() else { throw XCTSkip("C64 ROMs not installed") }
         let c64 = C64(roms: roms)
-        let modem = UserPortModem()
+        let modem = HayesModem()
         modem.baud = 2400   // the terminal runs at 1200; the modem must pick that up from "AT"
         modem.onDial = { [unowned self] in self.dialed = ($0, $1) }
         modem.onSend = { [unowned self] in self.sent.append($0) }

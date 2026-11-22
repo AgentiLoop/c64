@@ -60,22 +60,32 @@ by default.
 
 ## Dial-up BBSes over telnet
 
-A Hayes-style modem sits on the user port and "dials" internet hosts instead of phone numbers,
-like the WiFi modems people plug into real C64s. Plenty of Commodore BBSes are still online:
-see the [BBS list](docs/BBS-LIST.md).
+A Hayes-style modem "dials" internet hosts instead of phone numbers, like the WiFi modems people
+plug into real C64s. Plenty of Commodore BBSes are still online: see the [BBS list](docs/BBS-LIST.md).
 
-1. **Modem ▸ Load Terminal Program** starts a small BASIC terminal (1200 baud, KERNAL RS-232).
+1. **Modem ▸ Load Terminal Program (User Port)** starts a small BASIC terminal (1200 baud, KERNAL RS-232).
 2. Pick a board from **Modem ▸ Phone Book**, or type `ATDT host:port` in the terminal
    (e.g. `ATDT oasisbbs.hopto.org:6400`).
 3. Hang up with **Modem ▸ Hang Up**, or `+++` (wait a second) and `ATH`.
 
-* Other terminal programs that use the user port the standard way (TXD on PA2, RXD on PB0 + FLAG,
-  DCD on PB4) should work too; only the bundled terminal has been tested so far. The modem follows the C64's speed from the "AT" it sends
-  (300–9600 baud).
+**Modem ▸ Interface** chooses where the modem is plugged in:
+
+| Interface | Speed | Notes |
+|-----------|-------|-------|
+| User Port | 300–2400 baud (up to 9600 with fast drivers) | Standard wiring: TXD on PA2, RXD on PB0 + FLAG, DCD on PB4. The modem follows the C64's speed from the "AT" it sends. |
+| SwiftLink $DE00 | up to 38,400 baud | 6551 ACIA cartridge, interrupt on NMI, rates doubled by its 3.6864 MHz crystal. Hang up by dropping DTR works. |
+| Turbo232 $DE00 | up to 230,400 baud | SwiftLink plus the enhanced speed register at $DE07 (57,600 / 115,200 / 230,400). |
+
+For SwiftLink and Turbo232 use a terminal that supports them, such as
+[CCGMS Future](https://github.com/mist64/ccgmsterm) (F7 ▸ Modem Type "Swift / Turbo DE", Baud Rate 38400).
+CCGMS has been tested at 38,400 against The Oasis BBS; Turbo232's faster rates are covered by unit
+tests only.
+
 * Commands: `ATD`/`ATDT host[:port]` (port 23 by default), `ATH`, `ATO`, `ATZ`, `ATE0`/`ATE1`, `ATI`,
   `A/`; other settings are accepted with `OK`.
 * Telnet option requests are answered and raw TCP boards work as well.
-* The modem never lets the KERNAL's 256-byte receive buffer overflow, so even a BASIC terminal
+* The modem never overruns the C64: it waits while the KERNAL's 256-byte receive buffer is nearly
+  full (user port) or until the last byte has been read (SwiftLink), so even a BASIC terminal
   doesn't lose characters.
 
 ## ROMs
