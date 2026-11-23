@@ -19,6 +19,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// The D64 file currently in drive 8 and its GCR disk (written back when changed).
     var diskURL: URL?
     var disk: GCRDisk?
+    /// Second side of a D71 in drive 8 (1571); saved back together with `disk`.
+    var disk1: GCRDisk?
     /// The D81 file in drive 9 (1581) and its image.
     var disk9URL: URL?
     var disk9: D81Image?
@@ -240,6 +242,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             runner.perform { c64 in
                 C64Autostart.ensureBooted(c64)
                 c64.queueTyping("LOAD\"*\",8,1\nRUN\n")
+            }
+        case "d71":
+            guard runner.c64.drive8 != nil, let image = D71Image(data: bytes) else {
+                let alert = NSAlert()
+                alert.messageText = "Not a valid D71 image"
+                alert.informativeText = url.lastPathComponent
+                alert.runModal()
+                return
+            }
+            let (side0, side1) = image.gcrSides()
+            insertDisk(side0, side1: side1, url: url)
+            runner.perform { c64 in
+                if c64.isC128 {
+                    c64.reset()                                   // C128 disks boot themselves
+                } else {
+                    C64Autostart.ensureBooted(c64)
+                    c64.queueTyping("LOAD\"*\",8,1\nRUN\n")
+                }
             }
         case "d81":
             guard let image = D81Image(data: bytes) else {
@@ -517,18 +537,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     // MARK: - Drive 8
 
-    private func insertDisk(_ d: GCRDisk, url: URL?) {
+    private func insertDisk(_ d: GCRDisk, side1: GCRDisk? = nil, url: URL?) {
         saveDiskIfNeeded()
         disk = d
+        disk1 = side1
         diskURL = url
-        runner.perform { $0.drive8?.insert(d) }
+        runner.perform { $0.drive8?.insert(d, side1: side1) }
     }
 
-    /// Writes changed sectors back to the D64 file.
+    /// Writes changed sectors back to the D64 (or both sides to the D71) file.
     private func saveDiskIfNeeded() {
-        guard let d = disk, d.dirty, let url = diskURL else { return }
-        let image = d.toD64()
-        do { try Data(image.data).write(to: url) } catch { NSLog("Saving disk failed: \(error)") }
+        guard let d = disk, d.dirty || (disk1?.dirty ?? false), let url = diskURL else { return }
+        var bytes = d.toD64().data
+        if let d1 = disk1 { bytes += d1.toD64().data }
+        do { try Data(bytes).write(to: url) } catch { NSLog("Saving disk failed: \(error)") }
     }
 
     @objc func attachDisk(_ sender: Any?) {
@@ -546,6 +568,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func ejectDisk(_ sender: Any?) {
         saveDiskIfNeeded()
         disk = nil
+        disk1 = nil
         diskURL = nil
         runner.perform { _ = $0.drive8?.eject() }
         baseTitle = "C64"

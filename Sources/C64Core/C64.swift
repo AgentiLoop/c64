@@ -68,10 +68,39 @@ public final class C64: CPUBus {
         didSet { updateIECDevices() }
     }
     var rom1581: [UInt8]?
+    var rom1541: [UInt8]?
+    var rom1571: [UInt8]?
+
+    /// Makes drive 8 a 1571 (or back a 1541), keeping the disk in it. Returns false without the ROM.
+    @discardableResult
+    public func setDrive8Is1571(_ on: Bool) -> Bool {
+        guard let r = on ? rom1571 : rom1541 else { return false }
+        if drive8?.is1571 == on { return true }
+        let (d0, d1) = (drive8?.disk, drive8?.disk1)
+        drive8 = Drive1541(rom: r, iec: iec)
+        drive8?.hostClock = clockHz
+        if let d = d0 { drive8?.insert(d, side1: d1) }
+        return true
+    }
+
+    /// The 1581 is device 8 instead of 9 and the 1541 is unplugged (C128 boot disks in D81 format).
+    public private(set) var drive8Is1581 = false
+
+    /// Puts the 1581 on device 8 (1541 unplugged) or back on device 9. Returns the 1581.
+    @discardableResult
+    public func set1581AsDrive8(_ on: Bool) -> Drive1581? {
+        guard let r = rom1581 else { return nil }
+        let image = drive9?.image
+        drive8Is1581 = on
+        drive9 = Drive1581(rom: r, iec: iec, deviceNumber: on ? 8 : 9)
+        drive9?.hostClock = clockHz
+        if let img = image { drive9?.insert(img) }
+        return drive9
+    }
 
     func updateIECDevices() {
         var d: [IECDevice] = []
-        if let d8 = drive8 { d.append(d8) }
+        if let d8 = drive8, !drive8Is1581 { d.append(d8) }
         if let d9 = drive9 { d.append(d9) }
         iec.devices = d
     }
@@ -144,6 +173,8 @@ public final class C64: CPUBus {
 
     public convenience init(roms: ROMSet) {
         self.init(basic: roms.basic, kernal: roms.kernal, chargen: roms.chargen)
+        rom1541 = roms.drive1541
+        rom1571 = roms.drive1571
         if let r = roms.drive1541 {
             drive8 = Drive1541(rom: r, iec: iec)
             drive8?.hostClock = clockHz
@@ -227,7 +258,7 @@ public final class C64: CPUBus {
         cia2.tick()
         sid.tick()
         for d in clockedDevices { d(self) }
-        if let d = drive8 { d.clockC64Cycle() }
+        if let d = drive8, !drive8Is1581 { d.clockC64Cycle() }
         if let d = drive9 { d.clockC64Cycle() }
         if datasette.mode == .playing { datasette.tick(motor: cassetteMotor, cia: cia1) }
         cycles &+= 1

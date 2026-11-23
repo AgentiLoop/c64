@@ -141,6 +141,7 @@ extension C64 {
     public func setC128(_ roms: C128ROMs?) {
         c128 = roms.map(C128Memory.init)
         wireFastSerial()
+        setDrive8Is1571(c128 != nil)                         // a C128 has a 1571 (C128D); a C64 a 1541
         reset()
     }
 
@@ -167,6 +168,7 @@ extension C64 {
         guard let m = c128, m.go64Requested else { return }
         c128 = nil
         wireFastSerial()
+        setDrive8Is1571(false)
         reset()
         onModelChanged?()
     }

@@ -1,6 +1,11 @@
 /// True Commodore 1541 emulation: its own 6502 running the original DOS ROM, two VIA 6522s
 /// (VIA1 = serial bus, VIA2 = disk mechanics), the stepper head and a rotating GCR disk.
-public final class Drive1541: CPUBus, IECDevice {
+///
+/// Given the 32 KB 1571 ROM it is a 1571: the same hardware plus a 6526 CIA for the fast serial
+/// (burst) bus at $4000, a second head (side select on VIA1 PA2), a 1/2 MHz switch (PA5), the fast
+/// serial direction (PA1), the track 0 sensor (PA0) and BYTE READY on PA7. The WD1770 at $2000
+/// (only used for MFM / CP/M disks) is not emulated.
+public final class Drive1541: CPUBus, FastSerialDevice {
     public private(set) var cpu: CPU6502!
     public let via1 = VIA6522()
     public let via2 = VIA6522()
@@ -9,6 +14,16 @@ public final class Drive1541: CPUBus, IECDevice {
     unowned let iec: IECBus
 
     public private(set) var disk: GCRDisk?
+    /// The 1571's second side (tracks 36–70 of a D71).
+    public private(set) var disk1: GCRDisk?
+    /// True for a 1571 (32 KB ROM).
+    public let is1571: Bool
+    /// The 1571's CIA (fast serial port); unused on a 1541.
+    public let cia = CIA6526()
+    /// BYTE READY as seen on the 1571's VIA1 PA7: set when a byte is complete, cleared when VIA2
+    /// port A or B is accessed (as in VICE's via2d.c).
+    var byteReadyLevel = false
+    var halfSpeed = false
     public private(set) var halfTrack = 36
     var headPos = 0
     var byteTimer = 0
@@ -24,10 +39,19 @@ public final class Drive1541: CPUBus, IECDevice {
     var diskChangeCycles = 0
 
     public init(rom: [UInt8], iec: IECBus) {
-        precondition(rom.count == 0x4000, "1541 ROM must be 16 KB")
+        precondition(rom.count == 0x4000 || rom.count == 0x8000, "1541 ROM must be 16 KB, 1571 ROM 32 KB")
         self.rom = rom
         self.iec = iec
+        is1571 = rom.count == 0x8000
         cpu = CPU6502(bus: self)
+        if is1571 {
+            via1.portAIn = { [unowned self] in
+                (self.byteReadyLevel ? 0 : 0x80) | 0x7E | (self.halfTrack == 2 ? 0 : 1)
+            }
+            cia.onSerialOut = { [unowned self] byte in
+                if self.fastSerialOut { self.iec.driveSentFast(byte) }
+            }
+        }
         via1.portBIn = { [unowned self] in
             var v: UInt8 = 0x00          // bits 5/6 = 0: device number 8
             if !self.iec.dataLine { v |= 0x01 }
@@ -49,13 +73,16 @@ public final class Drive1541: CPUBus, IECDevice {
     public func reset() {
         via1.reset()
         via2.reset()
+        cia.reset()
+        byteReadyLevel = false
         cpu.reset()
     }
 
     // MARK: - Media
 
-    public func insert(_ d: GCRDisk) {
+    public func insert(_ d: GCRDisk, side1: GCRDisk? = nil) {
         disk = d
+        disk1 = side1
         diskChangeCycles = 400_000
     }
 
@@ -63,6 +90,7 @@ public final class Drive1541: CPUBus, IECDevice {
     public func eject() -> GCRDisk? {
         let d = disk
         disk = nil
+        disk1 = nil
         diskChangeCycles = 200_000
         return d
     }
@@ -70,6 +98,16 @@ public final class Drive1541: CPUBus, IECDevice {
     public var ledOn: Bool { via2.portBOutput & 0x08 != 0 }
     public var motorOn: Bool { via2.portBOutput & 0x04 != 0 }
     public var track: Int { halfTrack / 2 }
+    /// 1571 head 1 selected (VIA1 PA2).
+    public var side1: Bool { is1571 && via1.portAOutput & 0x04 != 0 }
+    /// 1571 running at 2 MHz (VIA1 PA5).
+    public var twoMHz: Bool { is1571 && via1.portAOutput & 0x20 != 0 }
+    /// 1571 driving the fast serial lines (VIA1 PA1).
+    var fastSerialOut: Bool { is1571 && via1.portAOutput & 0x02 != 0 }
+
+    public func fastSerialIn(_ byte: UInt8) {
+        if is1571 && !fastSerialOut { cia.receiveSerial(byte) }
+    }
 
     // MARK: - IEC
 
@@ -87,9 +125,9 @@ public final class Drive1541: CPUBus, IECDevice {
 
     // MARK: - Clock
 
-    /// Called once per C64 cycle (985 248 Hz); runs the drive at its own 1 MHz.
+    /// Called once per C64 cycle (985 248 Hz); runs the drive at its own 1 MHz (1571: 1 or 2 MHz).
     @inline(__always) public func clockC64Cycle() {
-        clockAcc += 1_000_000
+        clockAcc += twoMHz ? 2_000_000 : 1_000_000
         while clockAcc >= hostClock { clockAcc -= hostClock; cycleDebt += 1 }
         while cycleDebt > 0 { cpu.step() }
     }
@@ -97,9 +135,17 @@ public final class Drive1541: CPUBus, IECDevice {
     @inline(__always) private func tick() {
         via1.tick()
         via2.tick()
-        if diskChangeCycles > 0 { diskChangeCycles -= 1 }
-        if motorOn { rotate() }
-        cpu.irqLine = via1.irq || via2.irq
+        if is1571 {
+            cia.tick()
+        }
+        // The disk turns at the same speed whatever the CPU clock: at 2 MHz, every other cycle.
+        let rotateNow: Bool
+        if twoMHz { halfSpeed.toggle(); rotateNow = halfSpeed } else { rotateNow = true }
+        if rotateNow {
+            if diskChangeCycles > 0 { diskChangeCycles -= 1 }
+            if motorOn { rotate() }
+        }
+        cpu.irqLine = via1.irq || via2.irq || (is1571 && cia.irq)
         cycles &+= 1
         cycleDebt -= 1
     }
@@ -109,7 +155,7 @@ public final class Drive1541: CPUBus, IECDevice {
         let zone = Int(via2.portBOutput >> 5) & 3
         guard byteTimer >= 32 - 2 * zone else { return }
         byteTimer = 0
-        guard let d = disk, halfTrack & 1 == 0, track <= d.trackCount else { sync = false; return }
+        guard let d = side1 ? disk1 : disk, halfTrack & 1 == 0, track <= d.trackCount else { sync = false; return }
         let tr = d.tracks[track]
         let n = tr.count
         headPos = (headPos + 1) % n
@@ -132,6 +178,7 @@ public final class Drive1541: CPUBus, IECDevice {
 
     @inline(__always) private func byteReady() {
         via2.pulseCA1()
+        byteReadyLevel = true
         if via2.ca2High { cpu.v = true }   // SO pin: BYTE READY sets the overflow flag
     }
 
@@ -150,8 +197,12 @@ public final class Drive1541: CPUBus, IECDevice {
         switch a {
         case 0..<0x1800: v = ram[a & 0x7FF]
         case 0x1800..<0x1C00: v = via1.read(a)
-        case 0x1C00..<0x2000: v = via2.read(a)
-        case 0x8000...: v = rom[a & 0x3FFF]
+        case 0x1C00..<0x2000:
+            v = via2.read(a)
+            if [0, 1, 15].contains(a & 0x0F) { byteReadyLevel = false }
+        case 0x8000...: v = is1571 ? rom[a & 0x7FFF] : rom[a & 0x3FFF]
+        case 0x2000..<0x4000 where is1571: v = 0                        // WD1770: idle
+        case 0x4000..<0x8000 where is1571: v = cia.read(a)
         default: v = UInt8(a >> 8)
         }
         tick()
@@ -165,7 +216,9 @@ public final class Drive1541: CPUBus, IECDevice {
         case 0x1800..<0x1C00: via1.write(a, value)
         case 0x1C00..<0x2000:
             via2.write(a, value)
+            if [0, 1, 15].contains(a & 0x0F) { byteReadyLevel = false }
             if a & 0x0F == 0 || a & 0x0F == 2 { stepperMoved() }
+        case 0x4000..<0x8000 where is1571: cia.write(a, value)
         default: break
         }
         tick()

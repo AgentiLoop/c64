@@ -253,4 +253,59 @@ final class C128Tests: XCTestCase {
         XCTAssertGreaterThan(fastBytes, payload.count, "loaded over the slow bus (\(fastBytes) fast bytes)")
         print("1581 fast load: \(payload.count) bytes in \(frames) frames, \(fastBytes) fast serial bytes")
     }
+
+    func make128With1571() throws -> C64 {
+        guard let roms = ROMSet.load(), let c128 = roms.c128, roms.drive1571 != nil else {
+            throw XCTSkip("C128 or 1571 ROMs not installed")
+        }
+        let c64 = C64(roms: roms)
+        c64.setC128(c128)
+        XCTAssertTrue(c64.drive8?.is1571 ?? false)                // a C128 has a 1571 on drive 8
+        return c64
+    }
+
+    /// C128 + 1571: LOAD goes over the fast serial (burst) bus and the 1571 switches to 2 MHz.
+    func testFastLoadFrom1571() throws {
+        let c64 = try make128With1571()
+        let payload = (0..<12000).map { UInt8(truncatingIfNeeded: $0 &* 7 &+ 1) }
+        let d = D64Image.blank(name: "FAST 1571", id: "71")
+        XCTAssertTrue(d.addFile(name: "DATA", contents: [0x00, 0x30] + payload))
+        c64.drive8!.insert(GCRDisk(d64: d))
+        var fastBytes = 0
+        let host = c64.iec.hostFastSerialIn
+        c64.iec.hostFastSerialIn = { b in fastBytes += 1; host?(b) }
+        for _ in 0..<400 { c64.runFrame() }
+        c64.queueTyping("BLOAD\"DATA\",B0\n")
+        var frames = 0
+        var saw2MHz = false
+        for f in 0..<9000 {
+            c64.runFrame()
+            saw2MHz = saw2MHz || c64.drive8!.twoMHz
+            if screen(c64).components(separatedBy: "READY.").count > 2 { frames = f; break }
+        }
+        XCTAssertEqual(Array(c64.ram[0x3000..<0x3000 + payload.count]), payload, screen(c64))
+        XCTAssertGreaterThan(fastBytes, payload.count, "loaded over the slow bus (\(fastBytes) fast bytes)")
+        XCTAssertTrue(saw2MHz)
+        print("1571 fast load: \(payload.count) bytes in \(frames) frames, \(fastBytes) fast serial bytes")
+    }
+
+    /// D71: the 1571 reads the second side (track 36+ is head 1).
+    func testD71SecondSide() throws {
+        let c64 = try make128With1571()
+        let side0 = D64Image.blank(name: "DOUBLE", id: "71")
+        var bam = side0.sector(18, 0)
+        bam[3] = 0x80                                              // double-sided disk
+        side0.setSector(18, 0, bam)
+        let side1 = D64Image(tracks: 35)
+        side1.setSector(1, 0, [0x42, 0x43, 0x44] + [UInt8](repeating: 0x99, count: 253))  // track 36, sector 0
+        let d71 = D71Image(side0: side0, side1: side1)
+        XCTAssertNotNil(D71Image(data: d71.data))
+        let (g0, g1) = d71.gcrSides()
+        c64.drive8!.insert(g0, side1: g1)
+        for _ in 0..<400 { c64.runFrame() }
+        c64.queueTyping("10 OPEN15,8,15,\"I0\":OPEN2,8,2,\"#\":PRINT#15,\"U1 2 0 36 0\"\n"
+                        + "20 INPUT#15,E:GET#2,A$,B$:PRINT \"SIDE1\";E;ASC(A$);ASC(B$):CLOSE2:CLOSE15\nRUN\n")
+        for _ in 0..<2500 { c64.runFrame() }
+        XCTAssertTrue(screen(c64).contains("SIDE1 0  66  67"), screen(c64))
+    }
 }

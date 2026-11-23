@@ -228,6 +228,8 @@ public final class GCRDisk {
     public var writeProtected = false
     let trackCount: Int
     let diskID: (UInt8, UInt8)
+    /// Added to the track number in the sector headers: 35 for the second side of a D71.
+    let trackOffset: Int
     /// The image the disk was made from; sectors that can't be decoded keep their old data.
     let source: D64Image
 
@@ -250,10 +252,13 @@ public final class GCRDisk {
 
     static let trackCapacity = [6250, 6666, 7142, 7692]
 
-    public init(d64: D64Image) {
+    /// `trackOffset`/`diskID` are for the second side of a 1571 disk: its headers say tracks
+    /// 36–70 and carry the disk ID from side 0's BAM.
+    public init(d64: D64Image, trackOffset: Int = 0, diskID id: (UInt8, UInt8)? = nil) {
         source = d64
         trackCount = d64.tracks
-        diskID = d64.diskID
+        diskID = id ?? d64.diskID
+        self.trackOffset = trackOffset
         tracks = [[]]
         for t in 1...d64.tracks { tracks.append(encodeTrack(t, d64)) }
     }
@@ -301,7 +306,8 @@ public final class GCRDisk {
         out.reserveCapacity(capacity)
         for s in 0..<n {
             let (id1, id2) = diskID
-            let header: [UInt8] = [0x08, UInt8(s) ^ UInt8(t) ^ id1 ^ id2, UInt8(s), UInt8(t), id2, id1, 0x0F, 0x0F]
+            let ht = UInt8(t + trackOffset)
+            let header: [UInt8] = [0x08, UInt8(s) ^ ht ^ id1 ^ id2, UInt8(s), ht, id2, id1, 0x0F, 0x0F]
             out += [UInt8](repeating: 0xFF, count: 5)
             out += GCRDisk.encode(header)
             out += [UInt8](repeating: 0x55, count: 9)
@@ -332,7 +338,7 @@ public final class GCRDisk {
                 // End of a sync mark: an 0xFF followed by a non-0xFF byte.
                 if tr[i] == 0xFF && tr[(i + 1) % n] != 0xFF,
                    let hdr = GCRDisk.decode(tr, from: i + 1, groups: 2), hdr[0] == 0x08,
-                   Int(hdr[3]) == t, Int(hdr[2]) < D64Image.sectors(onTrack: t) {
+                   Int(hdr[3]) == t + trackOffset, Int(hdr[2]) < D64Image.sectors(onTrack: t) {
                     // Find the data block's sync.
                     var j = i + 11
                     var found = false
@@ -350,5 +356,33 @@ public final class GCRDisk {
             }
         }
         return out
+    }
+}
+
+/// A D71 image (1571, double-sided): side 0 (tracks 1–35) followed by side 1 (tracks 36–70),
+/// each laid out like a 35-track D64.
+public final class D71Image {
+    public static let sideSize = 683 * 256
+    public let side0: D64Image
+    public let side1: D64Image
+
+    public init?(data raw: [UInt8]) {
+        let n = D71Image.sideSize
+        guard raw.count == 2 * n || raw.count == 2 * 683 * 257,
+              let a = D64Image(data: Array(raw[0..<n])), let b = D64Image(data: Array(raw[n..<2 * n])) else { return nil }
+        side0 = a
+        side1 = b
+    }
+
+    public init(side0: D64Image, side1: D64Image) {
+        self.side0 = side0
+        self.side1 = side1
+    }
+
+    public var data: [UInt8] { side0.data + side1.data }
+
+    /// The two GCR sides for a 1571 (side 1 with tracks 36–70 and side 0's disk ID).
+    public func gcrSides() -> (GCRDisk, GCRDisk) {
+        (GCRDisk(d64: side0), GCRDisk(d64: side1, trackOffset: 35, diskID: side0.diskID))
     }
 }
