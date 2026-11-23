@@ -86,4 +86,30 @@ final class C128Tests: XCTestCase {
         for _ in 0..<60 { c64.runFrame() }
         XCTAssertFalse(c64.showing80Columns)
     }
+
+    /// FAST doubles the CPU speed (2 MHz), SLOW goes back to 1 MHz.
+    func testFastRunsTwiceAsFast() throws {
+        let c64 = try makeMachine()
+        c64.key4080Down = true                                     // 80 columns, like FAST is used
+        c64.reset()
+        for _ in 0..<300 { c64.runFrame() }
+        func frames(for command: String) -> Int {
+            c64.queueTyping(command + ":FOR I=1 TO 1500:NEXT:PRINT \"DO\";\"NE\"\n")
+            for f in 0..<2000 {
+                c64.runFrame()
+                if c64.vdcText().joined().contains("DONE") {
+                    c64.typeIntoBuffer("\u{93}")                  // clear screen
+                    for _ in 0..<20 { c64.runFrame() }
+                    return f
+                }
+            }
+            return 2000
+        }
+        let slow = frames(for: "SLOW")
+        let fast = frames(for: "FAST")
+        XCTAssertEqual(c64.peek(0xD030) & 1, 1)
+        XCTAssertLessThan(Double(fast), Double(slow) * 0.65, "slow \(slow) fast \(fast)")
+        _ = frames(for: "SLOW")
+        XCTAssertEqual(c64.peek(0xD030) & 1, 0)
+    }
 }

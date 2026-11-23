@@ -31,13 +31,16 @@ final class C128Memory {
     var go64Requested = false
     /// The 40/80 DISPLAY key (down = start in 80 columns).
     var key4080Down = false
+    /// 2 MHz mode (VIC-II register $D030 bit 0, BASIC's FAST): the CPU gets two cycles per VIC cycle.
+    var fast = false
+    var halfCycle = false
     var vdcRegs = [UInt8](repeating: 0, count: 64)
     var vdcRAM = [UInt8](repeating: 0, count: 0x10000)
 
     init(roms: C128ROMs) { self.roms = roms }
 
     func reset() {
-        cr = 0; pcr = [0, 0, 0, 0]; mcr = 0; rcr = 0
+        cr = 0; pcr = [0, 0, 0, 0]; mcr = 0; rcr = 0; fast = false; halfCycle = false
         p0l = 0; p0h = 0; p1l = 1; p1h = 0; p0hLatch = 0; p1hLatch = 0
         for i in 0..<ram1.count { ram1[i] = (i & 0x40) != 0 ? 0xFF : 0x00 }
     }
@@ -163,6 +166,7 @@ extension C64 {
             case 0xD5: return m.mmuRead(a & 0xFF)
             case 0xD6: return m.vdcRead(a)
             case 0xD7: return 0xFF
+            case 0xD0 where a & 0x3F == 0x30: return 0xFC | (m.fast ? 1 : 0)
             default: return readIO(a)
             }
         }
@@ -198,6 +202,7 @@ extension C64 {
             case 0xD5: m.mmuWrite(a & 0xFF, v)
             case 0xD6: m.vdcWrite(a, v)
             case 0xD7: break
+            case 0xD0 where a & 0x3F == 0x30: m.fast = v & 1 != 0
             default: writeIO(a, v)
             }
             return

@@ -218,6 +218,10 @@ public final class C64: CPUBus {
     }
 
     @inline(__always) func clock() {
+        if let m = c128, m.fast {                              // 2 MHz: every other CPU cycle is free
+            m.halfCycle.toggle()
+            if m.halfCycle { return }
+        }
         vic.tick()
         cia1.tick()
         cia2.tick()
@@ -247,14 +251,14 @@ public final class C64: CPUBus {
     // MARK: - CPUBus
 
     public func read(_ address: UInt16) -> UInt8 {
-        while vic.blocksCPU(write: false) { clock() }
+        while vic.blocksCPU(write: false) && !(c128?.fast ?? false) { clock() }
         let v = peek(address)
         clock()
         return v
     }
 
     public func write(_ address: UInt16, _ value: UInt8) {
-        while vic.blocksCPU(write: true) { clock() }
+        while vic.blocksCPU(write: true) && !(c128?.fast ?? false) { clock() }
         poke(address, value)
         clock()
     }
