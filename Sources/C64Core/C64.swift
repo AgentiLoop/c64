@@ -51,10 +51,6 @@ public final class C64: CPUBus {
     /// Keyboard matrix: keyMatrix[row] has bit `col` set while that key is held.
     /// Row = CIA1 port A bit, column = CIA1 port B bit.
     var keyMatrix = [UInt8](repeating: 0, count: 8)
-    var keyPressFrame = [Int](repeating: -100, count: 65)
-    var desiredKeyState = [Bool](repeating: false, count: 65)
-    var keyEvents: [(C64Key, Bool)] = []
-    var lastKeyPressFrame = -100
     public var restorePressed = false
     /// Joystick state, bits: 0 up, 1 down, 2 left, 3 right, 4 fire (1 = active).
     public var joystick1: UInt8 = 0
@@ -245,15 +241,16 @@ public final class C64: CPUBus {
             if c128 != nil { checkGo64() }
         }
         feedTypeQueue()
-        processKeyEvents()
     }
 
     /// Runs at least the given number of CPU cycles.
     public func run(cycles n: Int) {
         let end = cycles + UInt64(n)
         while cycles < end {
+            let frame = vic.frameCount
             cpu.step()
             if c128 != nil { checkGo64() }
+            if vic.frameCount != frame { feedTypeQueue() }
         }
     }
 
@@ -388,43 +385,16 @@ public final class C64: CPUBus {
 
     // MARK: - Keyboard / joysticks
 
-    /// Presses or releases a key. Events are queued and applied in order at frame
-    /// boundaries, spaced so the KERNAL's 60 Hz keyboard scan sees every tap even when the
-    /// host delivers press/release faster than a human would (pasted text, key automation).
+    /// Live keyboard state is applied immediately on the emulation thread.
+    /// Automated text uses queueTyping instead of delaying gameplay keys.
     public func setKey(_ key: C64Key, pressed: Bool) {
-        let idx = key.matrixIndex
-        guard desiredKeyState[idx] != pressed else { return }
-        desiredKeyState[idx] = pressed
-        keyEvents.append((key, pressed))
-        processKeyEvents()
-    }
-
-    private func setMatrix(_ key: C64Key, _ pressed: Bool) {
         if key == .restore { restorePressed = pressed; return }
         let (row, col) = key.matrix
         if pressed { keyMatrix[row] |= 1 << col } else { keyMatrix[row] &= ~(1 << col) }
     }
 
-    private func processKeyEvents() {
-        let frame = vic.frameCount
-        while let (key, pressed) = keyEvents.first {
-            let idx = key.matrixIndex
-            if pressed {
-                if frame - lastKeyPressFrame < 3 { break }
-                lastKeyPressFrame = frame
-                keyPressFrame[idx] = frame
-            } else if frame - keyPressFrame[idx] < 2 {
-                break
-            }
-            setMatrix(key, pressed)
-            keyEvents.removeFirst()
-        }
-    }
-
     public func releaseAllKeys() {
         for i in 0..<8 { keyMatrix[i] = 0 }
-        keyEvents.removeAll()
-        for i in 0..<desiredKeyState.count { desiredKeyState[i] = false }
         restorePressed = false
     }
 
