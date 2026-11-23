@@ -62,7 +62,7 @@
   @keyframes blink { 50% { opacity: 0; } }
   footer { margin-top: 40px; font-size: .85rem; color: #a5a0ff; }
   @media (max-width: 640px) { .screen { margin: 0; padding: 24px 18px; border-radius: 0; } h1 { font-size: 1.7rem; }
-                              .shots { grid-template-columns: 1fr; } }
+                              .shots { grid-template-columns: 1fr; } .roms { display: none; } }
 </style>
 </head>
 <body>
@@ -130,8 +130,8 @@ READY.
   <p>The Commodore ROMs are copyrighted and not included. On first launch the app looks in
      <code>~/Library/Application Support/C64Emu/ROMs</code> and in a VICE installation, or asks you for a folder with
      <code>basic</code>, <code>kernal</code> and <code>chargen</code> ROM files (and optionally the 1541/1581 DOS ROMs).</p>
-  <p>Preferred file names (files are matched by name prefix and must be exactly this size):</p>
-  <table>
+  <p class="roms">Preferred file names (files are matched by name prefix and must be exactly this size):</p>
+  <table class="roms">
     <tr class="group"><td colspan="4">Commodore 64</td></tr>
     <tr><th>BASIC</th><td><a href="https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/C64/basic-901226-01.bin"><code>basic-901226-01.bin</code></a></td><td>8 KB (8192 bytes)</td><td>required</td></tr>
     <tr><th>KERNAL</th><td><a href="https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/C64/kernal-901227-03.bin"><code>kernal-901227-03.bin</code></a></td><td>8 KB (8192 bytes)</td><td>required</td></tr>
