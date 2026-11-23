@@ -164,7 +164,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     // MARK: - Frame tick (main thread)
 
     private func frameTick() {
-        view.refresh()
         let led = (runner.c64.drive8?.ledOn ?? false) || (runner.c64.drive9?.ledOn ?? false)
         let tape = runner.c64.datasette.mode != .stopped && runner.c64.cassetteMotor
         let now = ProcessInfo.processInfo.systemUptime
@@ -565,7 +564,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         frame.size.height += delta
         frame.origin.y -= delta
         window.setFrame(frame, display: true, animate: false)
-        view.refresh()
     }
 
     // MARK: - Drive 9 (1581)

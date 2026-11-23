@@ -12,6 +12,8 @@ final class EmulatorRunner {
     private var running = false
     private var callbackPending = false
     private var completedFrames = 0
+    /// Bumped each time `frontBuffer` is replaced, so the view uploads only new pictures.
+    private var publishedFrames = 0
     /// Pictures the machine has completed (VIC-II, or VDC when showing 80 columns), for the FPS readout.
     var emulatedFrames: Int { lock.lock(); defer { lock.unlock() }; return completedFrames }
     private(set) var frontBuffer = [UInt32](repeating: 0, count: VICII.screenWidth * VICII.screenHeight)
@@ -46,6 +48,14 @@ final class EmulatorRunner {
         return body(frontBuffer, frontSize.width, frontSize.height, frontIs80)
     }
 
+    /// Hands the front buffer's bytes to `body` only when a picture was published after `serial`.
+    func withFrame(newerThan serial: inout Int, _ body: (UnsafeRawBufferPointer, Int, Int, Bool) -> Void) {
+        lock.lock(); defer { lock.unlock() }
+        guard publishedFrames != serial else { return }
+        serial = publishedFrames
+        frontBuffer.withUnsafeBytes { body($0, frontSize.width, frontSize.height, frontIs80) }
+    }
+
     func start() {
         running = true
         let t = Thread { [weak self] in self?.loop() }
@@ -62,6 +72,7 @@ final class EmulatorRunner {
     /// Copies the selected picture to the front buffer and schedules at most one main-thread refresh.
     private func publish(as80: Bool) {
         lock.lock()
+        publishedFrames &+= 1
         frontIs80 = as80
         if as80 {
             c64.renderVDC(into: &vdcBuffer)
