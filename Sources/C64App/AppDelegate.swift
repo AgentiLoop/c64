@@ -30,7 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// FPS / refresh-rate readout in the right corner of the title bar.
     let fpsLabel = NSTextField(labelWithString: "")
     let fpsAccessory = NSTitlebarAccessoryViewController()
-    var fpsStart = 0.0, fpsEmulated = 0, fpsDrawn = 0
+    var fpsStart = 0.0, fpsEmulated = 0
     var lastLED = false
     var lastTape = false
     /// The TAP file in the Datasette (recordings are written back to it).
@@ -167,17 +167,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         view.refresh()
         let led = (runner.c64.drive8?.ledOn ?? false) || (runner.c64.drive9?.ledOn ?? false)
         let tape = runner.c64.datasette.mode != .stopped && runner.c64.cassetteMotor
-        fpsDrawn += 1
         let now = ProcessInfo.processInfo.systemUptime
         if now - fpsStart >= 1 {
             let emulated = runner.emulatedFrames
             let elapsed = now - fpsStart
             let text = showFPS && fpsStart > 0
-                ? String(format: "%.1f fps (shown %.1f) · %@ %d Hz",
-                         Double(emulated - fpsEmulated) / elapsed, Double(fpsDrawn) / elapsed,
+                ? String(format: "%.1f fps · %@ %d Hz",
+                         Double(emulated - fpsEmulated) / elapsed,
                          runner.c64.standard == .pal ? "PAL" : "NTSC", runner.c64.mainsHz)
                 : ""
-            fpsStart = now; fpsEmulated = emulated; fpsDrawn = 0
+            fpsStart = now; fpsEmulated = emulated
             fpsText = text
             fpsLabel.stringValue = text
         }
