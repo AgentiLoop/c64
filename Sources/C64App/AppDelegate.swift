@@ -27,6 +27,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var baseTitle = "C64"
     var showFPS = UserDefaults.standard.bool(forKey: "ShowFPS")
     var fpsText = ""
+    /// FPS / refresh-rate readout in the right corner of the title bar.
+    let fpsLabel = NSTextField(labelWithString: "")
+    let fpsAccessory = NSTitlebarAccessoryViewController()
     var fpsStart = 0.0, fpsEmulated = 0, fpsDrawn = 0
     var lastLED = false
     var lastTape = false
@@ -99,6 +102,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                           backing: .buffered, defer: false)
         window.title = baseTitle
         window.contentAspectRatio = size
+        fpsLabel.font = .monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
+        fpsLabel.textColor = .secondaryLabelColor
+        fpsLabel.alignment = .right
+        let fpsBox = NSView(frame: NSRect(x: 0, y: 0, width: 230, height: 28))
+        fpsLabel.frame = NSRect(x: 0, y: 6, width: 222, height: 16)
+        fpsLabel.autoresizingMask = [.width, .minYMargin, .maxYMargin]
+        fpsBox.addSubview(fpsLabel)
+        fpsAccessory.view = fpsBox
+        fpsAccessory.layoutAttribute = .trailing
+        fpsAccessory.isHidden = !showFPS
+        window.addTitlebarAccessoryViewController(fpsAccessory)
         window.delegate = self
         view = EmulatorView(frame: NSRect(origin: .zero, size: size))
         view.runner = runner
@@ -155,23 +169,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let tape = runner.c64.datasette.mode != .stopped && runner.c64.cassetteMotor
         fpsDrawn += 1
         let now = ProcessInfo.processInfo.systemUptime
-        var fpsChanged = false
         if now - fpsStart >= 1 {
             let emulated = runner.emulatedFrames
             let elapsed = now - fpsStart
             let text = showFPS && fpsStart > 0
-                ? String(format: " — %.1f fps (shown %.1f) · %@ %d Hz",
+                ? String(format: "%.1f fps (shown %.1f) · %@ %d Hz",
                          Double(emulated - fpsEmulated) / elapsed, Double(fpsDrawn) / elapsed,
                          runner.c64.standard == .pal ? "PAL" : "NTSC", runner.c64.mainsHz)
                 : ""
             fpsStart = now; fpsEmulated = emulated; fpsDrawn = 0
-            fpsChanged = text != fpsText || window.title.hasSuffix(text) == false
             fpsText = text
+            fpsLabel.stringValue = text
         }
-        if led != lastLED || tape != lastTape || fpsChanged {
+        if led != lastLED || tape != lastTape {
             lastLED = led
             lastTape = tape
-            window.title = (led ? "● " : "") + (tape ? "▶ " : "") + baseTitle + fpsText
+            window.title = (led ? "● " : "") + (tape ? "▶ " : "") + baseTitle
         }
     }
 
@@ -180,6 +193,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         sender.state = showFPS ? .on : .off
         UserDefaults.standard.set(showFPS, forKey: "ShowFPS")
         fpsStart = 0
+        fpsAccessory.isHidden = !showFPS
+        if !showFPS { fpsLabel.stringValue = "" }
     }
 
     // MARK: - Joystick (event driven, independent of video)
