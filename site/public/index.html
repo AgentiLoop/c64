@@ -93,6 +93,8 @@ READY.
     <tr><th>Datasette</th><td>TAP playback and recording at cycle precision, with automatic warp while the motor runs.</td></tr>
     <tr><th>Fast loading</th><td>Instant Load copies KERNAL loads straight from the disk image; automatic warp while a drive motor runs.</td></tr>
     <tr><th>Media</th><td>D64, D81, PRG, T64 and TAP. Drag a file onto the window and it autostarts. Changes are written back to the image.</td></tr>
+    <tr><th>Commodore 128</th><td>Machine &#9656; Commodore 128 boots C128 mode with BASIC 7.0: 128K and the 8722 MMU, 40 columns on the VIC-II and 80 columns on the 8563 VDC (ESC X switches), FAST 2 MHz mode, GO64, disk boot. Needs the C128 ROMs (see below). No CP/M.</td></tr>
+    <tr><th>Modem</th><td>Dial Commodore and PC BBSes over telnet from the user port, SwiftLink or Turbo232 (up to 230,400 baud). Built-in terminal with PETSCII and ASCII/ANSI modes and XMODEM download/upload.</td></tr>
   </table>
 
   <h2>Getting started</h2>
@@ -112,6 +114,10 @@ READY.
     <tr><th>CHARGEN</th><td><a href="https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/C64/chargen-901225-01.bin"><code>chargen-901225-01.bin</code></a></td><td>4 KB (4096 bytes)</td><td>required</td></tr>
     <tr><th>1541 DOS</th><td><a href="https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/DRIVES/dos1541-325302-01%2B901229-05.bin"><code>dos1541-325302-01+901229-05.bin</code></a></td><td>16 KB (16384 bytes)</td><td>optional, drive 8</td></tr>
     <tr><th>1581 DOS</th><td><a href="https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/DRIVES/dos1581-318045-02.bin"><code>dos1581-318045-02.bin</code></a></td><td>32 KB (32768 bytes)</td><td>optional, drive 9</td></tr>
+    <tr><th>C128 KERNAL</th><td><a href="https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/C128/kernal-318020-05.bin"><code>kernal-318020-05.bin</code></a></td><td>16 KB (16384 bytes)</td><td>optional, C128 mode</td></tr>
+    <tr><th>C128 BASIC low</th><td><a href="https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/C128/basiclo-318018-04.bin"><code>basiclo-318018-04.bin</code></a></td><td>16 KB (16384 bytes)</td><td>optional, C128 mode</td></tr>
+    <tr><th>C128 BASIC high</th><td><a href="https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/C128/basichi-318019-04.bin"><code>basichi-318019-04.bin</code></a></td><td>16 KB (16384 bytes)</td><td>optional, C128 mode</td></tr>
+    <tr><th>C128 CHARGEN</th><td><a href="https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/C128/chargen-390059-01.bin"><code>chargen-390059-01.bin</code></a></td><td>8 KB (8192 bytes)</td><td>optional, C128 mode</td></tr>
   </table>
   <p>Or build from source:</p>
   <div class="code">
