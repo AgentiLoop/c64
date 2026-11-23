@@ -35,11 +35,17 @@ final class C128Memory {
     var halfCycle = false
     /// The 8563 VDC (80-column chip).
     public let vdc = VDC8563()
+    /// The KERNAL's active screen is the 80-column one: bit 7 of MODE ($D7) as the ROMs last wrote
+    /// it. A program running from RAM may use $D7 for its own data, so its writes are not followed.
+    var mode80 = false
+    /// A program running from RAM has written to the VDC ($D601).
+    var programUsesVDC = false
 
     init(roms: C128ROMs) { self.roms = roms }
 
     func reset() {
         cr = 0; pcr = [0, 0, 0, 0]; mcr = 0; rcr = 0; fast = false; halfCycle = false
+        mode80 = false; programUsesVDC = false
         vdc.reset()
         p0l = 0; p0h = 0; p1l = 1; p1h = 0; p0hLatch = 0; p1hLatch = 0
         for i in 0..<ram1.count { ram1[i] = (i & 0x40) != 0 ? 0xFF : 0x00 }
@@ -177,7 +183,9 @@ extension C64 {
             switch a >> 8 {
             case 0xD4: sid.write(a & 0x1F, v)
             case 0xD5: m.mmuWrite(a & 0xFF, v)
-            case 0xD6: m.vdc.write(a, v)
+            case 0xD6:
+                if a & 1 != 0 && !runningROM128(m) { m.programUsesVDC = true }
+                m.vdc.write(a, v)
             case 0xD7: break
             case 0xD0 where a & 0x3F == 0x30: m.fast = v & 1 != 0
             default: writeIO(a, v)
@@ -185,7 +193,22 @@ extension C64 {
             return
         }
         let (bank, addr) = m.locate(a)                         // writes always reach RAM
-        if bank == 0 { ram[addr] = v } else { m.ram1[addr] = v }
+        if bank == 0 {
+            ram[addr] = v
+            if addr == 0xD7 && runningROM128(m) { m.mode80 = v & 0x80 != 0 }
+        } else {
+            m.ram1[addr] = v
+        }
+    }
+
+    /// True while the 8502 is executing ROM (KERNAL, screen editor or BASIC), not a program in RAM.
+    func runningROM128(_ m: C128Memory) -> Bool {
+        switch Int(cpu.pc) {
+        case 0x4000..<0x8000: return m.cr & 0x02 == 0
+        case 0x8000..<0xC000: return m.cr & 0x0C == 0
+        case 0xC000...0xFFFF: return m.cr & 0x30 == 0
+        default: return false
+        }
     }
 
     /// What the VIC-II sees: the RAM bank chosen in the MMU's RAM configuration register, and the

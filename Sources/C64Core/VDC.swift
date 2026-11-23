@@ -7,10 +7,13 @@ extension C64 {
     static let rgbi = VDC8563.rgbi
 
     /// True while the 80-column screen should be shown: the KERNAL's active screen is the 80-column
-    /// one (40/80 key at reset, ESC X), or a program switched the VIC-II's display off (bit 4 of
-    /// $D011), as VDC demos and games do — on a real C128 the other monitor would show their picture.
+    /// one (40/80 key at reset, ESC X), or a program that draws on the VDC switched the VIC-II's
+    /// display off (bit 4 of $D011), as VDC demos and games do — on a real C128 the other monitor
+    /// would show their picture. A 40-column game that uses $D7 for its own data, or blanks the
+    /// VIC-II between screens, stays on the 40-column screen.
     public var showing80Columns: Bool {
-        c128 != nil && (ram[0xD7] & 0x80 != 0 || vic.read(0x11) & 0x10 == 0)
+        guard let m = c128 else { return false }
+        return m.mode80 || (m.programUsesVDC && vic.read(0x11) & 0x10 == 0)
     }
 
     /// The 40/80 DISPLAY key: down makes the C128 start in 80 columns (read at reset).
