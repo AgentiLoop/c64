@@ -28,6 +28,9 @@ extension C64 {
         return (v.pictureWidth, v.pictureHeight)
     }
 
+    /// Sequence number of the last completed VDC picture.
+    public var vdcPictureCount: UInt64 { c128?.vdc.pictureCount ?? 0 }
+
     /// Copies the last completed VDC picture into `buffer` (`vdcPictureSize`, 0xAARRGGBB).
     public func renderVDC(into buffer: inout [UInt32]) {
         guard let v = c128?.vdc else { return }
