@@ -313,9 +313,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 return
             }
             insertDisk(GCRDisk(d64: image), url: url)
+            // C128 boot disks (track 1 sector 0 starts with "CBM") start with BASIC 7's BOOT, which runs the
+            // boot sector's loader; LOAD"*" would only load the first file and skip its setup.
+            let bootSector = image.sector(1, 0).prefix(3).elementsEqual([0x43, 0x42, 0x4D])
             runner.perform { c64 in
                 C64Autostart.ensureBooted(c64)
-                c64.queueTyping("LOAD\"*\",8,1\nRUN\n")
+                c64.queueTyping(c64.isC128 && bootSector ? "BOOT\n" : "LOAD\"*\",8,1\nRUN\n")
             }
         case "d71":
             guard runner.c64.drive8 != nil, let image = D71Image(data: bytes) else {
