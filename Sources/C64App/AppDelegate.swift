@@ -12,7 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var runner: EmulatorRunner!
     var keyMapper: KeyMapper!
     let audio = AudioOutput()
-    var joystickPort = 2
+    var joystickPort = UserDefaults.standard.integer(forKey: "JoystickPort") == 1 ? 1 : 2
     var warpItem: NSMenuItem!
     var cursorJoyItem: NSMenuItem!
     var swapItem: NSMenuItem!
@@ -82,6 +82,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             self?.hangUpItem.title = host.map { "Hang Up (\($0))" } ?? "Hang Up"
         }
         runner.warpWhileDisk = UserDefaults.standard.object(forKey: "WarpWhileDisk") as? Bool ?? true
+        runner.warpWhileTape = UserDefaults.standard.object(forKey: "WarpWhileTape") as? Bool ?? true
+        runner.warp = UserDefaults.standard.bool(forKey: "Warp")
+        runner.display = EmulatorRunner.Display(rawValue: UserDefaults.standard.integer(forKey: "C128Display")) ?? .automatic
+        audio.muted = UserDefaults.standard.bool(forKey: "Mute")
         fastLoadItem.state = c64.fastLoad ? .on : .off
         diskWarpItem.state = runner.warpWhileDisk ? .on : .off
 
@@ -98,6 +102,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         keyMapper = KeyMapper { [weak self] key, pressed in
             self?.runner.perform { $0.setKey(key, pressed: pressed) }
         }
+        keyMapper.cursorKeysAsJoystick = UserDefaults.standard.bool(forKey: "CursorKeysJoystick")
+        keyMapper.fireIsUp = UserDefaults.standard.bool(forKey: "FireIsUp")
         view.keyMapper = keyMapper
         view.onFileDrop = { [weak self] url in self?.open(url: url) }
         window.contentView = view
@@ -378,6 +384,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func toggleTapeWarp(_ sender: NSMenuItem) {
         runner.warpWhileTape.toggle()
         sender.state = runner.warpWhileTape ? .on : .off
+        UserDefaults.standard.set(runner.warpWhileTape, forKey: "WarpWhileTape")
     }
 
     // MARK: - Model
@@ -442,6 +449,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func setDisplay(_ sender: NSMenuItem) {
         guard let display = EmulatorRunner.Display(rawValue: sender.tag) else { return }
         runner.display = display
+        UserDefaults.standard.set(sender.tag, forKey: "C128Display")
         for item in displayItems { item.state = item === sender ? .on : .off }
     }
 
@@ -736,6 +744,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func toggleWarp(_ sender: Any?) {
         runner.warp.toggle()
         warpItem.state = runner.warp ? .on : .off
+        UserDefaults.standard.set(runner.warp, forKey: "Warp")
     }
 
     @objc func togglePause(_ sender: NSMenuItem) {
@@ -746,22 +755,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func swapJoysticks(_ sender: Any?) {
         joystickPort = joystickPort == 2 ? 1 : 2
         swapItem.title = "Joystick in Port \(joystickPort == 2 ? 1 : 2)"
+        UserDefaults.standard.set(joystickPort, forKey: "JoystickPort")
     }
 
     @objc func toggleCursorJoystick(_ sender: Any?) {
         keyMapper.cursorKeysAsJoystick.toggle()
         cursorJoyItem.state = keyMapper.cursorKeysAsJoystick ? .on : .off
+        UserDefaults.standard.set(keyMapper.cursorKeysAsJoystick, forKey: "CursorKeysJoystick")
     }
 
     /// Fire button sends Up (jump) for games that jump with Up; a second button stays Fire.
     @objc func toggleFireIsUp(_ sender: NSMenuItem) {
         keyMapper.fireIsUp.toggle()
         sender.state = keyMapper.fireIsUp ? .on : .off
+        UserDefaults.standard.set(keyMapper.fireIsUp, forKey: "FireIsUp")
     }
 
     @objc func toggleMute(_ sender: NSMenuItem) {
         audio.muted.toggle()
         sender.state = audio.muted ? .on : .off
+        UserDefaults.standard.set(audio.muted, forKey: "Mute")
     }
 
     // MARK: - Menu
@@ -795,6 +808,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         ])
         add("Edit", [mi("Paste as Typing", #selector(pasteText(_:)), "v")])
         warpItem = mi("Warp Mode", #selector(toggleWarp(_:)), "j")
+        warpItem.state = UserDefaults.standard.bool(forKey: "Warp") ? .on : .off
+        let muteItem = mi("Mute", #selector(toggleMute(_:)), "m", [.command, .shift])
+        muteItem.state = UserDefaults.standard.bool(forKey: "Mute") ? .on : .off
         standardItems = [("PAL (UK, Europe, Australia) — 50 Hz", "pal"), ("NTSC (USA, Canada, Japan) — 60 Hz", "ntsc")].map {
             let item = mi($0.0, #selector(setVideoStandard(_:)))
             item.representedObject = $0.1
@@ -827,11 +843,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             .separator(),
             warpItem,
             mi("Pause", #selector(togglePause(_:)), "p"),
-            mi("Mute", #selector(toggleMute(_:)), "m", [.command, .shift]),
+            muteItem,
         ])
-        swapItem = mi("Joystick in Port 1", #selector(swapJoysticks(_:)), "k")
+        swapItem = mi("Joystick in Port \(joystickPort == 2 ? 1 : 2)", #selector(swapJoysticks(_:)), "k")
         cursorJoyItem = mi("Cursor Keys Control Joystick", #selector(toggleCursorJoystick(_:)), "u")
-        add("Input", [swapItem, cursorJoyItem, mi("Fire Button Is Up (Jump)", #selector(toggleFireIsUp(_:)))])
+        cursorJoyItem.state = UserDefaults.standard.bool(forKey: "CursorKeysJoystick") ? .on : .off
+        let fireUpItem = mi("Fire Button Is Up (Jump)", #selector(toggleFireIsUp(_:)))
+        fireUpItem.state = UserDefaults.standard.bool(forKey: "FireIsUp") ? .on : .off
+        add("Input", [swapItem, cursorJoyItem, fireUpItem])
         fastLoadItem = mi("Instant Load (Skip Disk Wait)", #selector(toggleFastLoad(_:)), "l")
         diskWarpItem = mi("Warp While Disk Loads", #selector(toggleDiskWarp(_:)))
         add("Drive", [
@@ -848,7 +867,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             diskWarpItem,
         ])
         let tapeWarp = mi("Warp While Tape Runs", #selector(toggleTapeWarp(_:)))
-        tapeWarp.state = .on
+        tapeWarp.state = UserDefaults.standard.object(forKey: "WarpWhileTape") as? Bool ?? true ? .on : .off
         add("Tape", [
             mi("Insert Tape…", #selector(attachTape(_:)), "t"),
             mi("New Blank Tape…", #selector(newBlankTape(_:)), "t", [.command, .shift]),
@@ -869,7 +888,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         displayItems = ["C128 Display: Automatic", "C128 Display: 40 Columns", "C128 Display: 80 Columns"].enumerated().map { i, title in
             let item = mi(title, #selector(setDisplay(_:)), "\(i + 4)")
             item.tag = i
-            item.state = i == 0 ? .on : .off
+            item.state = i == UserDefaults.standard.integer(forKey: "C128Display") ? .on : .off
             return item
         }
         add("View", borderItems + [.separator()] + displayItems)
