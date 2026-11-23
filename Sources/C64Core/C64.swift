@@ -15,6 +15,7 @@ public final class C64: CPUBus {
             drive8?.hostClock = clockHz
             drive9?.hostClock = clockHz
             modem?.clockHz = clockHz
+            c128?.vdc.clockHz = clockHz
             connectModem()
             reset()
         }
@@ -273,6 +274,7 @@ public final class C64: CPUBus {
             cia1.tickTOD()
             cia2.tickTOD()
         }
+        if let m = c128 { m.vdc.tick(cycle: cycles) }
         if let m = modem {
             m.tick(now: cycles)
             userPort?.tick(self)

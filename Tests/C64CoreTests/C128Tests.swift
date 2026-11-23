@@ -186,42 +186,111 @@ final class C128Tests: XCTestCase {
         XCTAssertTrue(s.contains("BOOT OK"), s)
     }
 
-    /// VDC character height (R9/R23) and smooth scrolling (R24 vertical, R25 horizontal).
-    func testVDCTallCharactersAndSmoothScroll() throws {
+    /// Boots in 80 columns and returns the machine with the VDC set up by the KERNAL.
+    func make80() throws -> (C64, VDC8563) {
         let c64 = try makeMachine()
         c64.key4080Down = true
         c64.reset()
         for _ in 0..<300 { c64.runFrame() }
-        let m = c64.c128!
+        return (c64, c64.c128!.vdc)
+    }
+
+    /// Two completed VDC frames after a change (the picture is drawn line by line as the beam runs).
+    func settle(_ c64: C64) {
+        let v = c64.c128!.vdc, start = v.frameCount
+        while v.frameCount < start + 2 { c64.run(cycles: 100) }
+    }
+
+    /// VDC character height (R9/R23) and smooth scrolling (R24 vertical, R25 horizontal).
+    func testVDCTallCharactersAndSmoothScroll() throws {
+        let (c64, v) = try make80()
+        XCTAssertEqual(c64.vdcPictureSize.width, 640)
+        XCTAssertEqual(c64.vdcPictureSize.height, 200)
+        // Stop the KERNAL from redrawing: SEI and an endless loop.
+        c64.cpu.i = true
+        let charset = Int(v.regs[28] & 0xE0) << 8
+        let screen = Int(v.regs[12]) << 8 | Int(v.regs[13])
+        let attrs = Int(v.regs[20]) << 8 | Int(v.regs[21])
+        for i in 0..<2000 { v.poke(screen + i, 0x20); v.poke(attrs + i, 0x0F) }
+        v.poke(screen, 1)
+        for l in 0..<16 { v.poke(charset + 16 + l, l == 12 ? 0xFF : 0) }
+        v.regs[9] = 15; v.regs[23] = 15
+        settle(c64)
+        var frame: [UInt32] = []
+        c64.renderVDC(into: &frame)
+        let w = c64.vdcPictureSize.width
+        let white = VDC8563.rgbi[15]
+        XCTAssertEqual(c64.vdcPictureSize.height, Int(v.regs[6]) * 16)
+        XCTAssertEqual(frame[12 * w], white)
+        XCTAssertNotEqual(frame[11 * w], white)
+        // Vertical smooth scroll by 4 lines moves it up.
+        v.regs[24] = (v.regs[24] & 0xE0) | 4
+        settle(c64); c64.renderVDC(into: &frame)
+        XCTAssertEqual(frame[8 * w], white)
+        XCTAssertNotEqual(frame[12 * w], white)
+        // Horizontal: two less than the cell width - 1 moves it 2 pixels left.
+        let cellW = Int(v.regs[22] >> 4) + 1
+        v.regs[25] = (v.regs[25] & 0xF0) | UInt8(cellW - 3)
+        settle(c64); c64.renderVDC(into: &frame)
+        XCTAssertEqual(frame[8 * w + 5], white)
+        XCTAssertNotEqual(frame[8 * w + 6], white)
+    }
+
+    /// 40-column double-pixel bitmap mode with attribute colours, as Bucket Wars 128 uses it
+    /// (R0 $3F, R1 40, R22 $89, R25 $D7, 100 rows of 2 lines): cells are 8 pixels (16 dots) wide
+    /// with no gap, so a solid bitmap has no vertical stripes.
+    func testVDCDoublePixelBitmapHasNoGaps() throws {
+        let (c64, v) = try make80()
+        c64.cpu.i = true
+        let regs: [Int: UInt8] = [0: 0x3F, 1: 40, 2: 0x37, 4: 0x9F, 5: 0, 6: 100, 9: 1, 12: 0, 13: 0,
+                                  20: 0x20, 21: 0, 22: 0x89, 23: 8, 24: 0, 25: 0xD7, 26: 0x00, 27: 0, 28: 0x20]
+        for (r, x) in regs { v.regs[r] = x }
+        for i in 0..<8000 { v.poke(i, 0xFF) }                       // solid bitmap
+        for i in 0..<4000 { v.poke(0x2000 + i, 0x0D) }              // yellow on black
+        settle(c64)
         var frame: [UInt32] = []
         c64.renderVDC(into: &frame)
         XCTAssertEqual(c64.vdcPictureSize.width, 640)
         XCTAssertEqual(c64.vdcPictureSize.height, 200)
-        // 16-line characters; screen code 1 gets a solid line 12.
-        m.vdcRegs[9] = 15; m.vdcRegs[23] = 15
-        let charset = Int(m.vdcRegs[28] & 0xE0) << 8
-        let screen = Int(m.vdcRegs[12]) << 8 | Int(m.vdcRegs[13])
-        let attrs = Int(m.vdcRegs[20]) << 8 | Int(m.vdcRegs[21])
-        m.vdcRAM[screen] = 1
-        m.vdcRAM[attrs] = 0x0F                                     // white, normal character set
-        for l in 0..<16 { m.vdcRAM[charset + 16 + l] = l == 12 ? 0xFF : 0 }
-        let white = C64.rgbi[15]
+        let yellow = VDC8563.rgbi[13]
+        let gaps = frame.indices.filter { frame[$0] != yellow }.count
+        XCTAssertEqual(gaps, 0, "non-yellow pixels in a solid double-pixel bitmap")
+        // Attribute high nibble is the background colour in bitmap mode.
+        for i in 0..<8000 { v.poke(i, 0x00) }
+        for i in 0..<4000 { v.poke(0x2000 + i, 0x4D) }              // background green
+        settle(c64); c64.renderVDC(into: &frame)
+        XCTAssertTrue(frame.allSatisfy { $0 == VDC8563.rgbi[4] })
+    }
+
+    /// The beam: register changes take effect on the raster line they happen (a mid-frame colour
+    /// split), and the status register reports vertical blank only outside the displayed rows.
+    func testVDCRasterTiming() throws {
+        let (c64, v) = try make80()
+        c64.cpu.i = true
+        v.regs[25] = 0x07                                           // text, no attributes
+        v.regs[26] = 0x00                                           // black background
+        settle(c64)
+        // Wait for the start of a frame, run to about the middle of the displayed area, change R26.
+        let start = v.frameCount
+        while v.frameCount == start { c64.run(cycles: 1) }
+        let lineCycles = Double(v.lineDots) / 16_000_000 * Double(c64.clockHz)
+        c64.run(cycles: Int(lineCycles * 100))
+        v.regs[26] = 0x04                                           // green background from here on
+        let mid = v.frameCount
+        while v.frameCount == mid { c64.run(cycles: 1) }
+        var frame: [UInt32] = []
         c64.renderVDC(into: &frame)
         let w = c64.vdcPictureSize.width
-        XCTAssertEqual(c64.vdcPictureSize.height, Int(m.vdcRegs[6]) * 16)
-        XCTAssertEqual(frame[12 * w], white)
-        XCTAssertNotEqual(frame[11 * w], white)
-        // Vertical smooth scroll by 4 lines moves it up.
-        m.vdcRegs[24] = (m.vdcRegs[24] & 0xE0) | 4
-        c64.renderVDC(into: &frame)
-        XCTAssertEqual(frame[8 * w], white)
-        XCTAssertNotEqual(frame[12 * w], white)
-        // Horizontal: two less than the cell width - 1 moves it 2 pixels left.
-        let cellW = Int(m.vdcRegs[22] >> 4) + 1
-        m.vdcRegs[25] = (m.vdcRegs[25] & 0xF0) | UInt8(cellW - 3)
-        c64.renderVDC(into: &frame)
-        XCTAssertEqual(frame[8 * w + 5], white)
-        XCTAssertNotEqual(frame[8 * w + 6], white)
+        XCTAssertEqual(frame[10 * w + 600], VDC8563.rgbi[0], "top half keeps the old background")
+        XCTAssertEqual(frame[190 * w + 600], VDC8563.rgbi[4], "bottom half has the new background")
+        // Vertical blank flag: clear while displaying, set in the bottom border.
+        var sawDisplay = false, sawBlank = false
+        for _ in 0..<20000 {
+            c64.run(cycles: 1)
+            let st = v.read(0)
+            if st & 0x20 == 0 { sawDisplay = true } else { sawBlank = true }
+        }
+        XCTAssertTrue(sawDisplay && sawBlank)
     }
 
     /// C128 + 1581: the KERNAL detects the fast drive and LOAD uses the fast serial (burst) bus

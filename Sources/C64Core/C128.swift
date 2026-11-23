@@ -26,22 +26,21 @@ final class C128Memory {
     var rcr: UInt8 = 0
     var p0l: UInt8 = 0, p0h: UInt8 = 0, p1l: UInt8 = 1, p1h: UInt8 = 0
     var p0hLatch: UInt8 = 0, p1hLatch: UInt8 = 0
-    var vdcSelect: UInt8 = 0
     /// Set when the MMU mode register selects C64 mode; the machine then restarts as a C64.
     var go64Requested = false
     /// The 40/80 DISPLAY key (down = start in 80 columns).
     var key4080Down = false
-    var vdcPictureWidth = 640, vdcPictureHeight = 200
     /// 2 MHz mode (VIC-II register $D030 bit 0, BASIC's FAST): the CPU gets two cycles per VIC cycle.
     var fast = false
     var halfCycle = false
-    var vdcRegs = [UInt8](repeating: 0, count: 64)
-    var vdcRAM = [UInt8](repeating: 0, count: 0x10000)
+    /// The 8563 VDC (80-column chip).
+    public let vdc = VDC8563()
 
     init(roms: C128ROMs) { self.roms = roms }
 
     func reset() {
         cr = 0; pcr = [0, 0, 0, 0]; mcr = 0; rcr = 0; fast = false; halfCycle = false
+        vdc.reset()
         p0l = 0; p0h = 0; p1l = 1; p1h = 0; p0hLatch = 0; p1hLatch = 0
         for i in 0..<ram1.count { ram1[i] = (i & 0x40) != 0 ? 0xFF : 0x00 }
     }
@@ -90,71 +89,13 @@ final class C128Memory {
         }
     }
 
-    /// 8563 VDC: register select / status at $D600, data at $D601. Always ready, in vertical blank.
-    /// Its RAM, the update address (R18/R19), data (R31) and block fill/copy (R30) work, so the
-    /// screen editor can initialise and clear the 80-column screen, but nothing is displayed.
-    func vdcRead(_ a: Int, cycles: UInt64 = 0, clockHz: Int = C64.palClock) -> UInt8 {
-        if a & 1 == 0 { return 0x80 | (vdcInVerticalBlank(cycles: cycles, clockHz: clockHz) ? 0x20 : 0) | 0x02 }
-        let r = Int(vdcSelect & 0x3F)
-        if r == 31 {
-            let addr = vdcAddress
-            vdcAddress = addr &+ 1
-            return vdcRAM[Int(addr)]
-        }
-        return vdcRegs[r]
-    }
-
-    func vdcWrite(_ a: Int, _ v: UInt8) {
-        if a & 1 == 0 { vdcSelect = v; return }
-        let r = Int(vdcSelect & 0x3F)
-        vdcRegs[r] = v
-        switch r {
-        case 31:
-            vdcRAM[Int(vdcAddress)] = v
-            vdcAddress &+= 1
-        case 30:                                             // block copy (R24 bit 7) or fill, 1–256 bytes
-            let count = v == 0 ? 256 : Int(v)
-            var src = UInt16(vdcRegs[32]) << 8 | UInt16(vdcRegs[33])
-            for _ in 0..<count {
-                if vdcRegs[24] & 0x80 != 0 {
-                    vdcRAM[Int(vdcAddress)] = vdcRAM[Int(src)]
-                    src &+= 1
-                } else {
-                    vdcRAM[Int(vdcAddress)] = vdcRegs[31]
-                }
-                vdcAddress &+= 1
-            }
-            if vdcRegs[24] & 0x80 != 0 { vdcRegs[32] = UInt8(src >> 8); vdcRegs[33] = UInt8(src & 0xFF) }
-        default:
-            break
-        }
-    }
-
-    /// Status bit 5: the VDC's beam is outside the displayed rows. The frame timing follows the
-    /// registers (16 MHz dot clock; R0 total characters per line, R22 character width, R4/R9/R5
-    /// total rows and lines, R6 displayed rows), so programs that wait for vertical blank keep going.
-    func vdcInVerticalBlank(cycles: UInt64, clockHz: Int) -> Bool {
-        let charWidth = Int(vdcRegs[22] >> 4) + 1
-        let lineDots = (Int(vdcRegs[0]) + 1) * charWidth
-        let cellLines = Int(vdcRegs[9] & 0x1F) + 1
-        let totalLines = max(1, (Int(vdcRegs[4]) + 1) * cellLines + Int(vdcRegs[5] & 0x1F))
-        let displayed = Int(vdcRegs[6]) * cellLines
-        let lineCycles = max(1.0, Double(lineDots) / 16_000_000 * Double(clockHz))
-        let frameCycles = lineCycles * Double(totalLines)
-        let pos = Double(cycles).truncatingRemainder(dividingBy: frameCycles)
-        return Int(pos / lineCycles) >= displayed
-    }
-
-    var vdcAddress: UInt16 {
-        get { UInt16(vdcRegs[18]) << 8 | UInt16(vdcRegs[19]) }
-        set { vdcRegs[18] = UInt8(newValue >> 8); vdcRegs[19] = UInt8(newValue & 0xFF) }
-    }
 }
 
 extension C64 {
     /// Commodore 128 (C128 mode) when its ROMs are given, the C64 when nil. Resets the machine.
     public func setC128(_ roms: C128ROMs?) {
         c128 = roms.map(C128Memory.init)
+        c128?.vdc.clockHz = clockHz
         wireFastSerial()
         setDrive8Is1571(c128 != nil || use1571OnC64)          // a C128 has a 1571 (C128D); a C64 a 1541
         reset()
@@ -200,7 +141,7 @@ extension C64 {
             switch a >> 8 {
             case 0xD4: return sid.read(a & 0x1F)
             case 0xD5: return m.mmuRead(a & 0xFF)
-            case 0xD6: return m.vdcRead(a, cycles: cycles, clockHz: clockHz)
+            case 0xD6: return m.vdc.read(a)
             case 0xD7: return 0xFF
             case 0xD0 where a & 0x3F == 0x30: return 0xFC | (m.fast ? 1 : 0)
             default: return readIO(a)
@@ -236,7 +177,7 @@ extension C64 {
             switch a >> 8 {
             case 0xD4: sid.write(a & 0x1F, v)
             case 0xD5: m.mmuWrite(a & 0xFF, v)
-            case 0xD6: m.vdcWrite(a, v)
+            case 0xD6: m.vdc.write(a, v)
             case 0xD7: break
             case 0xD0 where a & 0x3F == 0x30: m.fast = v & 1 != 0
             default: writeIO(a, v)

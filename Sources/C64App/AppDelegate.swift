@@ -658,6 +658,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
+    /// Saves the current picture at its native resolution (VIC-II 384x272 or VDC) as a PNG on the
+    /// Desktop. In C128 mode the 80-column chip's registers and RAM are written next to it.
+    @objc func saveScreenshot(_ sender: Any?) {
+        let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
+        let desktop = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask)[0]
+        let url = desktop.appendingPathComponent("C64 \(stamp).png")
+        runner.withFrame { pixels, w, h, _ in
+            let data = pixels.withUnsafeBufferPointer { Data(buffer: $0) } as CFData
+            guard let provider = CGDataProvider(data: data),
+                  let img = CGImage(width: w, height: h, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: w * 4,
+                                    space: CGColorSpaceCreateDeviceRGB(),
+                                    bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue),
+                                    provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent),
+                  let rep = NSBitmapImageRep(cgImage: img).representation(using: .png, properties: [:]) else { return }
+            try? rep.write(to: url)
+        }
+        runner.perform { c64 in
+            guard let dump = c64.vdcDump() else { return }
+            try? dump.write(to: url.deletingPathExtension().appendingPathExtension("vdc"))
+        }
+    }
+
     @objc func dialPhoneBook(_ sender: NSMenuItem) {
         guard let address = sender.representedObject as? String else { return }
         dial(address)
@@ -747,6 +769,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         ])
         add("File", [
             mi("Open / Autostart…", #selector(openDocument(_:)), "o"),
+            mi("Save Screenshot", #selector(saveScreenshot(_:)), "s", [.command, .shift]),
             .separator(),
             mi("Close Window", #selector(NSWindow.performClose(_:)), "w"),
         ])
