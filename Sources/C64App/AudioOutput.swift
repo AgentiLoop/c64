@@ -22,6 +22,14 @@ final class SampleRing {
         }
     }
 
+    /// Drops the oldest samples beyond `limit`, bounding latency without changing emulation speed.
+    func trim(to limit: Int) {
+        lock.lock(); defer { lock.unlock() }
+        guard count > limit else { return }
+        readIndex = (readIndex + count - limit) % buffer.count
+        count = limit
+    }
+
     func read(into out: UnsafeMutablePointer<Float>, frames: Int) {
         lock.lock(); defer { lock.unlock() }
         var last: Float = count > 0 ? buffer[readIndex] : 0

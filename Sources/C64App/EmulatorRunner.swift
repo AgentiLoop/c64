@@ -10,6 +10,7 @@ final class EmulatorRunner {
     private let lock = NSLock()
     private var pending: [(C64) -> Void] = []
     private var running = false
+    private var callbackPending = false
     private(set) var frontBuffer = [UInt32](repeating: 0, count: VICII.screenWidth * VICII.screenHeight)
     var onFrame: (() -> Void)?
     /// True when `frontBuffer` holds the C128's 80-column (VDC) picture instead of the VIC-II's.
@@ -22,8 +23,8 @@ final class EmulatorRunner {
     var warp = false
     /// Run at full speed while the Datasette motor is turning.
     var warpWhileTape = true
-    /// Run at full speed while a disk drive motor is turning.
-    var warpWhileDisk = true
+    /// Run at full speed while a disk drive motor is turning (opt-in: games often keep it running).
+    var warpWhileDisk = false
     var paused = false
 
     init(c64: C64, audio: AudioOutput) {
@@ -32,7 +33,7 @@ final class EmulatorRunner {
         c64.sid.sampleRate = audio.sampleRate
     }
 
-    /// Schedules work to run on the emulation thread between frames.
+    /// Schedules work to run on the emulation thread before the next short emulation slice.
     func perform(_ block: @escaping (C64) -> Void) {
         lock.lock(); pending.append(block); lock.unlock()
     }
@@ -53,10 +54,41 @@ final class EmulatorRunner {
 
     func stop() { running = false }
 
+    private static func now() -> Double { Double(DispatchTime.now().uptimeNanoseconds) / 1e9 }
+
+    /// Copies the selected picture to the front buffer and schedules at most one main-thread refresh.
+    private func publish(as80: Bool) {
+        lock.lock()
+        frontIs80 = as80
+        if as80 {
+            c64.renderVDC(into: &vdcBuffer)
+            frontBuffer = vdcBuffer
+            frontSize = c64.vdcPictureSize
+        } else {
+            frontBuffer = c64.vic.frameBuffer
+            frontSize = (VICII.screenWidth, VICII.screenHeight)
+        }
+        let schedule = !callbackPending && onFrame != nil
+        if schedule { callbackPending = true }
+        lock.unlock()
+        if schedule {
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.lock.lock(); self.callbackPending = false; self.lock.unlock()
+                self.onFrame?()
+            }
+        }
+    }
+
     private func loop() {
-        var period: Double { Double(c64.frameCycles) / Double(c64.clockHz) }
-        var deadline = Date().timeIntervalSinceReferenceDate
-        var frameCounter = 0
+        // Short slices let input reach the machine within a few milliseconds instead of a frame.
+        let slices = 8
+        var baseTime = EmulatorRunner.now()
+        var baseCycles = c64.cycles
+        var baseClock = c64.clockHz
+        var lastPublish = 0.0
+        var vicFrame = c64.vic.frameCount
+        var vdcPicture = c64.vdcPictureCount
         while running {
             lock.lock()
             let work = pending
@@ -66,50 +98,48 @@ final class EmulatorRunner {
 
             if paused {
                 Thread.sleep(forTimeInterval: 0.02)
-                deadline = Date().timeIntervalSinceReferenceDate
+                baseTime = EmulatorRunner.now(); baseCycles = c64.cycles
                 continue
             }
 
-            c64.runFrame()
+            c64.run(cycles: max(1, c64.frameCycles / slices))
             let diskBusy = (c64.drive8?.motorOn ?? false) || (c64.drive9?.motorOn ?? false)
             let warp = self.warp || (warpWhileTape && c64.datasette.mode != .stopped && c64.cassetteMotor)
                 || (warpWhileDisk && diskBusy)
             let samples = c64.sid.takeSamples()
-            frameCounter += 1
-            if !warp { audio.ring.write(samples) }
-
-            if !warp || frameCounter % 10 == 0 {
-                lock.lock()
-                switch display {
-                case .automatic: frontIs80 = c64.showing80Columns
-                case .columns40: frontIs80 = false
-                case .columns80: frontIs80 = c64.isC128
-                }
-                if frontIs80 {
-                    c64.renderVDC(into: &vdcBuffer)
-                    frontBuffer = vdcBuffer
-                    frontSize = c64.vdcPictureSize
-                } else {
-                    frontBuffer = c64.vic.frameBuffer
-                    frontSize = (VICII.screenWidth, VICII.screenHeight)
-                }
-                lock.unlock()
-                if let cb = onFrame { DispatchQueue.main.async(execute: cb) }
+            if !warp {
+                audio.ring.write(samples)
+                audio.ring.trim(to: Int(audio.sampleRate) / 10)   // at most 100 ms queued
             }
 
-            if warp {
-                deadline = Date().timeIntervalSinceReferenceDate
+            let as80: Bool
+            switch display {
+            case .automatic: as80 = c64.showing80Columns
+            case .columns40: as80 = false
+            case .columns80: as80 = c64.isC128
+            }
+            let newVIC = c64.vic.frameCount != vicFrame
+            let newVDC = c64.vdcPictureCount != vdcPicture
+            vicFrame = c64.vic.frameCount
+            vdcPicture = c64.vdcPictureCount
+            let fresh = as80 ? newVDC : newVIC
+            let t = EmulatorRunner.now()
+            // Each display publishes on its own completed picture; warp limits copies to ~60 per second.
+            if (fresh || as80 != frontIs80) && (!warp || t - lastPublish >= 1.0 / 60) {
+                lastPublish = t
+                publish(as80: as80)
+            }
+
+            if warp || c64.clockHz != baseClock {
+                baseTime = t; baseCycles = c64.cycles; baseClock = c64.clockHz
                 continue
             }
-            // Pace to real time, nudged by the audio fill level to avoid drift.
-            deadline += period
-            let fill = audio.ring.available
-            if fill > 6000 { deadline += 0.002 } else if fill < 1500 { deadline -= 0.002 }
-            let now = Date().timeIntervalSinceReferenceDate
-            if deadline > now {
-                Thread.sleep(forTimeInterval: deadline - now)
-            } else if now - deadline > 0.25 {
-                deadline = now
+            // Pace emulated cycles to the monotonic clock; audio buffering never changes machine speed.
+            let target = baseTime + Double(c64.cycles &- baseCycles) / Double(baseClock)
+            if target > t {
+                Thread.sleep(forTimeInterval: target - t)
+            } else if t - target > 0.25 {
+                baseTime = t; baseCycles = c64.cycles
             }
         }
     }
