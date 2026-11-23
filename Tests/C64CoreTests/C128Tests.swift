@@ -262,6 +262,34 @@ final class C128Tests: XCTestCase {
         XCTAssertTrue(frame.allSatisfy { $0 == VDC8563.rgbi[4] })
     }
 
+    /// Bucket Wars 128's map screen: 22 rows of 8 lines, two picture buffers (bitmap $0000 with
+    /// attributes $1B80, bitmap $1F00 with attributes $3A80) swapped through R12/R13 and R20/R21,
+    /// and the screen hidden with R34 = $40 (past R0) while a new one is set up.
+    func testVDCBitmapStartAddressAndBlanking() throws {
+        let (c64, v) = try make80()
+        c64.cpu.i = true
+        let regs: [Int: UInt8] = [0: 0x3F, 1: 40, 2: 0x37, 4: 0x27, 5: 0, 6: 22, 9: 7, 12: 0, 13: 0,
+                                  20: 0x1B, 21: 0x80, 22: 0x89, 23: 8, 24: 0, 25: 0xD7, 26: 0x00, 27: 0, 28: 0x20,
+                                  34: 0x3F, 35: 0x34]
+        for (r, x) in regs { v.regs[r] = x }
+        for i in 0..<7040 { v.poke(i, 0xFF); v.poke(0x1F00 + i, 0x00) }
+        for i in 0..<880 { v.poke(0x1B80 + i, 0x0D); v.poke(0x3A80 + i, 0x4D) }
+        settle(c64)
+        var frame: [UInt32] = []
+        c64.renderVDC(into: &frame)
+        XCTAssertEqual(c64.vdcPictureSize.height, 176)
+        XCTAssertTrue(frame.allSatisfy { $0 == VDC8563.rgbi[13] }, "first buffer: solid yellow")
+        v.regs[12] = 0x1F; v.regs[20] = 0x3A
+        settle(c64); c64.renderVDC(into: &frame)
+        XCTAssertTrue(frame.allSatisfy { $0 == VDC8563.rgbi[4] }, "second buffer: empty bitmap on green")
+        v.regs[34] = 0x40
+        settle(c64); c64.renderVDC(into: &frame)
+        XCTAssertTrue(frame.allSatisfy { $0 == VDC8563.rgbi[0] }, "blanked")
+        v.regs[34] = 0x3F
+        settle(c64); c64.renderVDC(into: &frame)
+        XCTAssertTrue(frame.allSatisfy { $0 == VDC8563.rgbi[4] })
+    }
+
     /// The beam: register changes take effect on the raster line they happen (a mid-frame colour
     /// split), and the status register reports vertical blank only outside the displayed rows.
     func testVDCRasterTiming() throws {

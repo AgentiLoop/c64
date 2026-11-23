@@ -11,7 +11,9 @@ import Foundation
 ///   dots) and displayed pixels, R23 displayed character lines, R24/R25 smooth scroll;
 /// - text mode with attributes (alternate set, reverse, underline, blink, RGBI colour), cursor
 ///   (R10/R11/R14/R15), screen reverse (R24 bit 6), semigraphics (R25 bit 5);
-/// - bitmap mode (R25 bit 7), coloured by attributes (high nibble background, low foreground) or R26;
+/// - bitmap mode (R25 bit 7) from the display start address (R12/R13), coloured by attributes (high
+///   nibble background, low foreground) or R26;
+/// - display enable begin/end (R34/R35): the picture is blanked while R34 lies past R0;
 /// - the address increment per row (R27), character set address and 16K/64K addressing (R28);
 /// - interlace sync and video (R8 = 3): fields alternate and fill the odd/even picture lines;
 /// - the status register: busy after memory accesses and block copy/fill (R30), with VICE's timings,
@@ -41,6 +43,7 @@ public final class VDC8563 {
     // Address counters (latched at the start of each frame).
     var screenRowAddr = 0
     var attrRowAddr = 0
+    var screenStart = 0          // R12/R13 as latched; bitmap data is read from screenStart + bitmapAddr
     var bitmapAddr = 0
 
     // Status.
@@ -65,7 +68,7 @@ public final class VDC8563 {
         regs = [UInt8](repeating: 0, count: 64)
         // Power-on values VICE uses (the KERNAL programs all of them anyway).
         regs[0] = 126; regs[1] = 80; regs[4] = 38; regs[6] = 25; regs[9] = 7; regs[22] = 0x78; regs[23] = 8
-        regs[25] = 0x47; regs[26] = 0xF0; regs[28] = 0x20
+        regs[25] = 0x47; regs[26] = 0xF0; regs[28] = 0x20; regs[34] = 0x7D; regs[35] = 0x64
         select = 0
         dotAcc = 0; rowCounter = 0; rowLine = 0; inFineAdjust = false; displayLine = 0
         busyUntil = 0
@@ -178,7 +181,8 @@ public final class VDC8563 {
             drawWidth = w; drawHeight = h
             drawBuffer = [UInt32](repeating: 0xFF000000, count: w * h)
         }
-        screenRowAddr = Int(regs[12]) << 8 | Int(regs[13])
+        screenStart = Int(regs[12]) << 8 | Int(regs[13])
+        screenRowAddr = screenStart
         attrRowAddr = Int(regs[20]) << 8 | Int(regs[21])
         if !(interlaced && regs[25] & 0x80 != 0 && field == 1) { bitmapAddr = 0 }   // odd bitmap field continues
         rowCounter = 0
@@ -257,6 +261,13 @@ public final class VDC8563 {
         guard y < drawHeight else { return }
         let w = drawWidth
         let base = y * w
+        // Display enable (R34 begin, R35 end), as VICE: when the character counter (0...R0) never
+        // reaches R34 the line stays blanked. Programs set R34 past R0 to hide the screen while
+        // they set up a new one.
+        if (regs[34] > regs[0] && regs[35] <= regs[0]) || (regs[34] == regs[35] && regs[35] <= regs[0]) {
+            for i in base..<base + w { drawBuffer[i] = 0xFF000000 }
+            return
+        }
         let bitmap = regs[25] & 0x80 != 0
         let attrsOn = regs[25] & 0x40 != 0
         let px = doublePixel ? 2 : 1
@@ -294,7 +305,7 @@ public final class VDC8563 {
             var bits: UInt8 = 0
             if line <= displayedLines {
                 if bitmap {
-                    bits = peek(bitmapAddr + c)
+                    bits = peek(screenStart + bitmapAddr + c)
                     if attrsOn { bg = Int(attr >> 4) } else { fg = fg0 }
                 } else {
                     let code = Int(peek(screenRowAddr + c)) | (attrsOn && attr & 0x80 != 0 ? 0x100 : 0)
