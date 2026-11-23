@@ -48,9 +48,9 @@
   table { width: 100%; border-collapse: collapse; font-size: .95rem; }
   td, th { text-align: left; vertical-align: top; padding: 7px 10px; border-bottom: 1px solid rgba(165,160,255,.25); }
   th { color: #a5a0ff; white-space: nowrap; }
-  .keys tr.group td { padding-top: 22px; color: #fff; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
-                      font-size: .8rem; border-bottom: 2px solid rgba(165,160,255,.5); }
-  .keys tr.group:first-child td { padding-top: 7px; }
+  tr.group td { padding-top: 22px; color: #fff; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+                font-size: .8rem; border-bottom: 2px solid rgba(165,160,255,.5); }
+  tr.group:first-child td { padding-top: 7px; }
   code, pre { font-family: ui-monospace, Menlo, monospace; font-size: .9rem; }
   pre { background: rgba(0,0,0,.25); padding: 14px 16px; border-radius: 4px; overflow-x: auto; }
   .code { position: relative; }
@@ -132,16 +132,19 @@ READY.
      <code>basic</code>, <code>kernal</code> and <code>chargen</code> ROM files (and optionally the 1541/1581 DOS ROMs).</p>
   <p>Preferred file names (files are matched by name prefix and must be exactly this size):</p>
   <table>
+    <tr class="group"><td colspan="4">Commodore 64</td></tr>
     <tr><th>BASIC</th><td><a href="https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/C64/basic-901226-01.bin"><code>basic-901226-01.bin</code></a></td><td>8 KB (8192 bytes)</td><td>required</td></tr>
     <tr><th>KERNAL</th><td><a href="https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/C64/kernal-901227-03.bin"><code>kernal-901227-03.bin</code></a></td><td>8 KB (8192 bytes)</td><td>required</td></tr>
     <tr><th>CHARGEN</th><td><a href="https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/C64/chargen-901225-01.bin"><code>chargen-901225-01.bin</code></a></td><td>4 KB (4096 bytes)</td><td>required</td></tr>
-    <tr><th>1541 DOS</th><td><a href="https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/DRIVES/dos1541-325302-01%2B901229-05.bin"><code>dos1541-325302-01+901229-05.bin</code></a></td><td>16 KB (16384 bytes)</td><td>optional, drive 8</td></tr>
-    <tr><th>1581 DOS</th><td><a href="https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/DRIVES/dos1581-318045-02.bin"><code>dos1581-318045-02.bin</code></a></td><td>32 KB (32768 bytes)</td><td>optional, drive 9</td></tr>
+    <tr><th>1541 DOS</th><td><a href="https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/DRIVES/dos1541-325302-01%2B901229-05.bin"><code>dos1541-325302-01+901229-05.bin</code></a></td><td>16 KB (16384 bytes)</td><td>optional, drive 8 (also used in C128 mode)</td></tr>
+    <tr><th>1581 DOS</th><td><a href="https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/DRIVES/dos1581-318045-02.bin"><code>dos1581-318045-02.bin</code></a></td><td>32 KB (32768 bytes)</td><td>optional, drive 9 (also used in C128 mode)</td></tr>
+
+    <tr class="group"><td colspan="4">Commodore 128 (in addition to the C64 ROMs above)</td></tr>
+    <tr><th>C128 KERNAL</th><td><a href="https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/C128/kernal-318020-05.bin"><code>kernal-318020-05.bin</code></a></td><td>16 KB (16384 bytes)</td><td>needed for C128 mode</td></tr>
+    <tr><th>C128 BASIC low</th><td><a href="https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/C128/basiclo-318018-04.bin"><code>basiclo-318018-04.bin</code></a></td><td>16 KB (16384 bytes)</td><td>needed for C128 mode</td></tr>
+    <tr><th>C128 BASIC high</th><td><a href="https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/C128/basichi-318019-04.bin"><code>basichi-318019-04.bin</code></a></td><td>16 KB (16384 bytes)</td><td>needed for C128 mode</td></tr>
+    <tr><th>C128 CHARGEN</th><td><a href="https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/C128/chargen-390059-01.bin"><code>chargen-390059-01.bin</code></a></td><td>8 KB (8192 bytes)</td><td>needed for C128 mode</td></tr>
     <tr><th>1571 DOS</th><td><a href="https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/DRIVES/dos1571-310654-05.bin"><code>dos1571-310654-05.bin</code></a></td><td>32 KB (32768 bytes)</td><td>optional, drive 8 in C128 mode</td></tr>
-    <tr><th>C128 KERNAL</th><td><a href="https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/C128/kernal-318020-05.bin"><code>kernal-318020-05.bin</code></a></td><td>16 KB (16384 bytes)</td><td>optional, C128 mode</td></tr>
-    <tr><th>C128 BASIC low</th><td><a href="https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/C128/basiclo-318018-04.bin"><code>basiclo-318018-04.bin</code></a></td><td>16 KB (16384 bytes)</td><td>optional, C128 mode</td></tr>
-    <tr><th>C128 BASIC high</th><td><a href="https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/C128/basichi-318019-04.bin"><code>basichi-318019-04.bin</code></a></td><td>16 KB (16384 bytes)</td><td>optional, C128 mode</td></tr>
-    <tr><th>C128 CHARGEN</th><td><a href="https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/C128/chargen-390059-01.bin"><code>chargen-390059-01.bin</code></a></td><td>8 KB (8192 bytes)</td><td>optional, C128 mode</td></tr>
   </table>
   <p>Or build from source:</p>
   <div class="code">
