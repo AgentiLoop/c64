@@ -81,7 +81,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         modemLink.onStatus = { [weak self] host in
             self?.hangUpItem.title = host.map { "Hang Up (\($0))" } ?? "Hang Up"
         }
-        runner.warpWhileDisk = UserDefaults.standard.object(forKey: "WarpWhileDisk") as? Bool ?? true
+        runner.warpWhileDisk = UserDefaults.standard.bool(forKey: "WarpWhileDisk")   // opt-in
         runner.warpWhileTape = UserDefaults.standard.object(forKey: "WarpWhileTape") as? Bool ?? true
         runner.warp = UserDefaults.standard.bool(forKey: "Warp")
         runner.display = EmulatorRunner.Display(rawValue: UserDefaults.standard.integer(forKey: "C128Display")) ?? .automatic
@@ -104,6 +104,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         keyMapper.cursorKeysAsJoystick = UserDefaults.standard.bool(forKey: "CursorKeysJoystick")
         keyMapper.fireIsUp = UserDefaults.standard.bool(forKey: "FireIsUp")
+        keyMapper.onJoystickChange = { [weak self] in self?.updateJoystick() }
         view.keyMapper = keyMapper
         view.onFileDrop = { [weak self] url in self?.open(url: url) }
         window.contentView = view
@@ -114,6 +115,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         applyBorder(UserDefaults.standard.integer(forKey: "BorderMode"))
 
         runner.onFrame = { [weak self] in self?.frameTick() }
+        observeControllers()
         audio.start()
         runner.start()
         if let url = pendingOpen { pendingOpen = nil; open(url: url) }
@@ -153,6 +155,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             lastTape = tape
             window.title = (led ? "● " : "") + (tape ? "▶ " : "") + baseTitle
         }
+    }
+
+    // MARK: - Joystick (event driven, independent of video)
+
+    /// Sends the combined keyboard/controller joystick state to the selected port.
+    func updateJoystick() {
+        guard let runner, let keyMapper else { return }
         var bits = keyMapper.joystickBits
         let jump = keyMapper.fireIsUp   // button A is Up (jump); the other buttons stay Fire
         for pad in GCController.controllers() {
@@ -175,6 +184,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let port = joystickPort
         runner.perform { c64 in
             if port == 2 { c64.joystick2 = bits; c64.joystick1 = 0 } else { c64.joystick1 = bits; c64.joystick2 = 0 }
+        }
+    }
+
+    /// Controllers report every change on the main queue; connect/disconnect also updates the port.
+    private func observeControllers() {
+        let attach: (GCController) -> Void = { [weak self] pad in
+            pad.handlerQueue = .main
+            pad.extendedGamepad?.valueChangedHandler = { _, _ in self?.updateJoystick() }
+            pad.microGamepad?.valueChangedHandler = { _, _ in self?.updateJoystick() }
+        }
+        GCController.controllers().forEach(attach)
+        for name in [Notification.Name.GCControllerDidConnect, .GCControllerDidDisconnect] {
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
+                if name == .GCControllerDidConnect, let pad = note.object as? GCController { attach(pad) }
+                self?.updateJoystick()
+            }
         }
     }
 
@@ -756,12 +781,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         joystickPort = joystickPort == 2 ? 1 : 2
         swapItem.title = "Joystick in Port \(joystickPort == 2 ? 1 : 2)"
         UserDefaults.standard.set(joystickPort, forKey: "JoystickPort")
+        updateJoystick()
     }
 
     @objc func toggleCursorJoystick(_ sender: Any?) {
         keyMapper.cursorKeysAsJoystick.toggle()
         cursorJoyItem.state = keyMapper.cursorKeysAsJoystick ? .on : .off
         UserDefaults.standard.set(keyMapper.cursorKeysAsJoystick, forKey: "CursorKeysJoystick")
+        updateJoystick()
     }
 
     /// Fire button sends Up (jump) for games that jump with Up; a second button stays Fire.
@@ -769,6 +796,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         keyMapper.fireIsUp.toggle()
         sender.state = keyMapper.fireIsUp ? .on : .off
         UserDefaults.standard.set(keyMapper.fireIsUp, forKey: "FireIsUp")
+        updateJoystick()
     }
 
     @objc func toggleMute(_ sender: NSMenuItem) {
@@ -852,7 +880,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         fireUpItem.state = UserDefaults.standard.bool(forKey: "FireIsUp") ? .on : .off
         add("Input", [swapItem, cursorJoyItem, fireUpItem])
         fastLoadItem = mi("Instant Load (Skip Disk Wait)", #selector(toggleFastLoad(_:)), "l")
-        diskWarpItem = mi("Warp While Disk Loads", #selector(toggleDiskWarp(_:)))
+        diskWarpItem = mi("Warp While Disk Motor Runs", #selector(toggleDiskWarp(_:)))
         add("Drive", [
             mi("Attach Disk to Drive 8…", #selector(attachDisk(_:)), "d"),
             mi("Eject Disk", #selector(ejectDisk(_:)), "e"),
