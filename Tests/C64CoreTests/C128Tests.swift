@@ -112,4 +112,47 @@ final class C128Tests: XCTestCase {
         _ = frames(for: "SLOW")
         XCTAssertEqual(c64.peek(0xD030) & 1, 0)
     }
+
+    /// Disk access in C128 mode goes through the true-emulated 1541 (no Instant Load): a C64 BASIC
+    /// program loads (relocated to $1C01) and runs, a new program saves, and DIRECTORY lists both.
+    func testDiskLoadSaveInC128Mode() throws {
+        guard let roms = ROMSet.load(), let c128 = roms.c128, roms.drive1541 != nil else {
+            throw XCTSkip("C128 or 1541 ROMs not installed")
+        }
+        let c64 = C64(roms: roms)
+        let disk = GCRDisk(d64: {
+            let d = D64Image.blank(name: "C128 DISK", id: "28")
+            d.addFile(name: "HELLO", contents: DriveTests.helloPRG("LOADED ON 128"))
+            return d
+        }())
+        c64.drive8!.insert(disk)
+        c64.setC128(c128)                                      // boots, checks drive 8 for a boot disk
+        /// Types a command and runs until a new READY. appears (and `text` shows, if given).
+        func run(_ command: String, expect text: String? = nil, frames: Int = 4000) -> Bool {
+            let before = screen(c64).components(separatedBy: "READY.").count
+            c64.queueTyping(command + "\n")
+            for _ in 0..<frames {
+                c64.runFrame()
+                let s = screen(c64)
+                if s.components(separatedBy: "READY.").count > before && (text.map(s.contains) ?? true) { return true }
+            }
+            return false
+        }
+        for _ in 0..<600 { c64.runFrame() }
+        XCTAssertTrue(screen(c64).contains("READY."), screen(c64))
+        XCTAssertTrue(run("LOAD\"HELLO\",8", expect: "LOADING"), screen(c64))
+        XCTAssertTrue(run("RUN", expect: "LOADED ON 128"), screen(c64))
+        c64.typeIntoBuffer("\u{93}")                                // clear screen
+        for _ in 0..<20 { c64.runFrame() }
+        XCTAssertTrue(run("NEW"), screen(c64))
+        c64.queueTyping("10 PRINT\"SAVED ON 128\"\n")           // a program line prints no READY.
+        for _ in 0..<100 { c64.runFrame() }
+        XCTAssertTrue(run("SAVE\"MY128\",8", expect: "SAVING"), screen(c64))
+        XCTAssertFalse(screen(c64).contains("ERROR"), screen(c64))
+        let entries = disk.toD64().directory()
+        XCTAssertEqual(entries.map(\.name), ["HELLO", "MY128"], screen(c64))
+        if let e = entries.last {
+            XCTAssertEqual(Array(disk.toD64().readFile(e).prefix(2)), [0x01, 0x1C])     // C128 BASIC start
+        }
+    }
 }
