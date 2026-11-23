@@ -155,4 +155,34 @@ final class C128Tests: XCTestCase {
             XCTAssertEqual(Array(disk.toD64().readFile(e).prefix(2)), [0x01, 0x1C])     // C128 BASIC start
         }
     }
+
+    /// A disk with a C128 boot sector (track 1 sector 0, "CBM") auto-starts at power-on:
+    /// the KERNAL prints "BOOTING <name>..." and runs the boot code in the sector.
+    func testAutobootDisk() throws {
+        guard let roms = ROMSet.load(), let c128 = roms.c128, roms.drive1541 != nil else {
+            throw XCTSkip("C128 or 1541 ROMs not installed")
+        }
+        let d = D64Image.blank(name: "BOOT DISK", id: "28")
+        var sector = [UInt8](repeating: 0, count: 256)
+        let header: [UInt8] = [0x43, 0x42, 0x4D, 0, 0, 0, 0] + Array("AUTO".utf8) + [0] + [0]   // CBM, no load, title, no file
+        sector.replaceSubrange(0..<header.count, with: header)
+        // Boot code: print "BOOT OK" and return to BASIC.
+        let message = Array("BOOT OK".utf8) + [13]
+        var code: [UInt8] = []
+        for ch in message { code += [0xA9, ch, 0x20, 0xD2, 0xFF] }     // LDA #ch / JSR CHROUT
+        code.append(0x60)                                              // RTS
+        sector.replaceSubrange(header.count..<header.count + code.count, with: code)
+        d.setSector(1, 0, sector)
+        let c64 = C64(roms: roms)
+        c64.drive8!.insert(GCRDisk(d64: d))
+        c64.setC128(c128)
+        var s = ""
+        for _ in 0..<1500 {
+            c64.runFrame()
+            s = screen(c64)
+            if s.contains("BOOT OK") { break }
+        }
+        XCTAssertTrue(s.contains("BOOTING AUTO"), s)
+        XCTAssertTrue(s.contains("BOOT OK"), s)
+    }
 }
