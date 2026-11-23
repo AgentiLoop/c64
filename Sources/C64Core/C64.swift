@@ -72,6 +72,11 @@ public final class C64: CPUBus {
     var rom1571: [UInt8]?
 
     /// Makes drive 8 a 1571 (or back a 1541), keeping the disk in it. Returns false without the ROM.
+    /// Use a 1571 as drive 8 in C64 mode too (it runs in 1541 mode: 1 MHz, slow serial bus).
+    public var use1571OnC64 = false {
+        didSet { if c128 == nil { setDrive8Is1571(use1571OnC64) } }
+    }
+
     @discardableResult
     public func setDrive8Is1571(_ on: Bool) -> Bool {
         guard let r = on ? rom1571 : rom1541 else { return false }

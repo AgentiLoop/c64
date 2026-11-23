@@ -121,7 +121,7 @@ Preferred file names (files are matched by name prefix and must be exactly this 
 | CHARGEN | [`chargen-901225-01.bin`](https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/C64/chargen-901225-01.bin) | 4 KB (4096 bytes) | required |
 | 1541 DOS | [`dos1541-325302-01+901229-05.bin`](https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/DRIVES/dos1541-325302-01%2B901229-05.bin) | 16 KB (16384 bytes) | optional, drive 8 |
 | 1581 DOS | [`dos1581-318045-02.bin`](https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/DRIVES/dos1581-318045-02.bin) | 32 KB (32768 bytes) | optional, drive 9 |
-| 1571 DOS | [`dos1571-310654-05.bin`](https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/DRIVES/dos1571-310654-05.bin) | 32 KB (32768 bytes) | optional, drive 8 in C128 mode |
+| 1571 DOS | [`dos1571-310654-05.bin`](https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/DRIVES/dos1571-310654-05.bin) | 32 KB (32768 bytes) | optional, drive 8 in C128 mode (and in C64 mode with Machine ▸ C64 Drive 8 Is a 1571) |
 | C128 KERNAL | [`kernal-318020-05.bin`](https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/C128/kernal-318020-05.bin) | 16 KB (16384 bytes) | optional, C128 mode |
 | C128 BASIC low | [`basiclo-318018-04.bin`](https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/C128/basiclo-318018-04.bin) | 16 KB (16384 bytes) | optional, C128 mode |
 | C128 BASIC high | [`basichi-318019-04.bin`](https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/C128/basichi-318019-04.bin) | 16 KB (16384 bytes) | optional, C128 mode |

@@ -65,6 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             c64.standard = std
         }
         for item in standardItems { item.state = item.representedObject as? String == c64.standard.rawValue ? .on : .off }
+        c64.use1571OnC64 = UserDefaults.standard.bool(forKey: "C64Drive1571")
         if UserDefaults.standard.string(forKey: "Model") == "c128", let c128 = roms.c128 {
             c64.setC128(c128)
             c64.key4080Down = UserDefaults.standard.bool(forKey: "C128Boot80")
@@ -410,6 +411,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     /// The C128's 40/80 DISPLAY key: when down, C128 mode starts on the 80-column screen.
+    /// Drive 8 is a 1571 in C64 mode too (always a 1571 in C128 mode).
+    @objc func toggleC64Drive1571(_ sender: NSMenuItem) {
+        guard ROMSet.load()?.drive1571 != nil else {
+            let alert = NSAlert()
+            alert.messageText = "1571 drive ROM not found"
+            alert.informativeText = "Put dos1571-310654-05.bin (32 KB) into \(ROMSet.userROMDirectory.path)."
+            alert.runModal()
+            return
+        }
+        let on = sender.state != .on
+        sender.state = on ? .on : .off
+        UserDefaults.standard.set(on, forKey: "C64Drive1571")
+        runner.perform { $0.use1571OnC64 = on }
+    }
+
     @objc func toggleBoot80(_ sender: NSMenuItem) {
         let on = sender.state != .on
         sender.state = on ? .on : .off
@@ -751,12 +767,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             item.representedObject = $0.1
             return item
         }
+        let drive1571Item = mi("C64 Drive 8 Is a 1571", #selector(toggleC64Drive1571(_:)))
+        drive1571Item.state = UserDefaults.standard.bool(forKey: "C64Drive1571") ? .on : .off
         let boot80Item = mi("C128 Starts in 80 Columns (40/80 Key Down)", #selector(toggleBoot80(_:)))
         boot80Item.state = UserDefaults.standard.bool(forKey: "C128Boot80") ? .on : .off
         add("Machine", [
             modelItems[0],
             modelItems[1],
             boot80Item,
+            drive1571Item,
             .separator(),
             standardItem,
             .separator(),

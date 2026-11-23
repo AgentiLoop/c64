@@ -308,4 +308,24 @@ final class C128Tests: XCTestCase {
         for _ in 0..<2500 { c64.runFrame() }
         XCTAssertTrue(screen(c64).contains("SIDE1 0  66  67"), screen(c64))
     }
+
+    /// A 1571 on a C64: it runs in 1541 mode, so a normal LOAD over the slow serial bus works.
+    func test1571OnC64() throws {
+        guard let roms = ROMSet.load(), roms.drive1571 != nil else { throw XCTSkip("1571 ROM not installed") }
+        let c64 = C64(roms: roms)
+        c64.fastLoad = false
+        c64.use1571OnC64 = true
+        XCTAssertTrue(c64.drive8?.is1571 ?? false)
+        let d = D64Image.blank(name: "C64 1571", id: "71")
+        d.addFile(name: "HELLO", contents: DriveTests.helloPRG("1571 ON C64"))
+        c64.drive8!.insert(GCRDisk(d64: d))
+        for _ in 0..<200 { c64.runFrame() }
+        c64.queueTyping("LOAD\"HELLO\",8\n")
+        for _ in 0..<3000 { c64.runFrame(); if screen(c64).components(separatedBy: "READY.").count > 2 { break } }
+        c64.queueTyping("RUN\n")
+        for _ in 0..<100 { c64.runFrame() }
+        XCTAssertTrue(screen(c64).contains("1571 ON C64"), screen(c64))
+        c64.use1571OnC64 = false
+        XCTAssertFalse(c64.drive8?.is1571 ?? true)
+    }
 }
