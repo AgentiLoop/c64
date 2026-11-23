@@ -63,4 +63,27 @@ final class C128Tests: XCTestCase {
         XCTAssertFalse(c64.isC128)
         XCTAssertTrue(screen(c64).contains("38911 BASIC BYTES FREE"), screen(c64))
     }
+
+    /// With the 40/80 key down the C128 starts on the VDC; BASIC works there and the picture is drawn.
+    func testBootsIn80Columns() throws {
+        let c64 = try makeMachine()
+        c64.key4080Down = true
+        c64.reset()
+        for _ in 0..<300 { c64.runFrame() }
+        XCTAssertTrue(c64.showing80Columns)
+        var text = c64.vdcText().joined(separator: "\n")
+        XCTAssertTrue(text.contains("COMMODORE BASIC V7.0 122365 BYTES FREE"), text)
+        c64.queueTyping("PRINT \"EIGHTY COLUMNS\";6*7\n")
+        for _ in 0..<100 { c64.runFrame() }
+        text = c64.vdcText().joined(separator: "\n")
+        XCTAssertTrue(text.contains("EIGHTY COLUMNS 42"), text)
+        var frame: [UInt32] = []
+        c64.renderVDC(into: &frame)
+        XCTAssertEqual(frame.count, C64.vdcWidth * C64.vdcHeight)
+        XCTAssertGreaterThan(Set(frame).count, 1)                     // text was drawn
+        // The 40-column screen is still the VIC-II's; ESC X switches between them.
+        c64.typeIntoBuffer("\u{1B}X")
+        for _ in 0..<60 { c64.runFrame() }
+        XCTAssertFalse(c64.showing80Columns)
+    }
 }

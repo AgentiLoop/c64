@@ -27,8 +27,10 @@ final class EmulatorView: NSView {
 
     func refresh() {
         guard let runner = runner else { return }
-        let w = VICII.screenWidth, h = VICII.screenHeight
-        let image: CGImage? = runner.withFrame { pixels in
+        var is80 = false
+        let image: CGImage? = runner.withFrame { pixels, eighty in
+            is80 = eighty
+            let w = eighty ? C64.vdcWidth : VICII.screenWidth, h = eighty ? C64.vdcHeight : VICII.screenHeight
             let data = pixels.withUnsafeBufferPointer { Data(buffer: $0) } as CFData
             guard let provider = CGDataProvider(data: data) else { return nil }
             return CGImage(width: w, height: h, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: w * 4,
@@ -36,7 +38,7 @@ final class EmulatorView: NSView {
                            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue),
                            provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)
         }
-        layer?.contents = image?.cropping(to: crop)
+        layer?.contents = is80 ? image : image?.cropping(to: crop)   // the VDC picture has no border to trim
     }
 
     override func keyDown(with event: NSEvent) {

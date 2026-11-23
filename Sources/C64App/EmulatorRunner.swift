@@ -12,6 +12,9 @@ final class EmulatorRunner {
     private var running = false
     private(set) var frontBuffer = [UInt32](repeating: 0, count: VICII.screenWidth * VICII.screenHeight)
     var onFrame: (() -> Void)?
+    /// True when `frontBuffer` holds the C128's 80-column (VDC) picture instead of the VIC-II's.
+    private(set) var frontIs80 = false
+    private var vdcBuffer: [UInt32] = []
     var warp = false
     /// Run at full speed while the Datasette motor is turning.
     var warpWhileTape = true
@@ -30,9 +33,9 @@ final class EmulatorRunner {
         lock.lock(); pending.append(block); lock.unlock()
     }
 
-    func withFrame<T>(_ body: ([UInt32]) -> T) -> T {
+    func withFrame<T>(_ body: ([UInt32], Bool) -> T) -> T {
         lock.lock(); defer { lock.unlock() }
-        return body(frontBuffer)
+        return body(frontBuffer, frontIs80)
     }
 
     func start() {
@@ -73,7 +76,13 @@ final class EmulatorRunner {
 
             if !warp || frameCounter % 10 == 0 {
                 lock.lock()
-                frontBuffer = c64.vic.frameBuffer
+                frontIs80 = c64.showing80Columns
+                if frontIs80 {
+                    c64.renderVDC(into: &vdcBuffer)
+                    frontBuffer = vdcBuffer
+                } else {
+                    frontBuffer = c64.vic.frameBuffer
+                }
                 lock.unlock()
                 if let cb = onFrame { DispatchQueue.main.async(execute: cb) }
             }

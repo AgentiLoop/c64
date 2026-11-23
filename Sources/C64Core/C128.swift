@@ -29,6 +29,8 @@ final class C128Memory {
     var vdcSelect: UInt8 = 0
     /// Set when the MMU mode register selects C64 mode; the machine then restarts as a C64.
     var go64Requested = false
+    /// The 40/80 DISPLAY key (down = start in 80 columns).
+    var key4080Down = false
     var vdcRegs = [UInt8](repeating: 0, count: 64)
     var vdcRAM = [UInt8](repeating: 0, count: 0x10000)
 
@@ -57,7 +59,7 @@ final class C128Memory {
         switch reg {
         case 0: return cr
         case 1...4: return pcr[reg - 1]
-        case 5: return (mcr & 0x09) | 0x80 | 0x30 | 0x06   // 40/80 key up, C128 mode, no cartridge
+        case 5: return (mcr & 0x09) | (key4080Down ? 0 : 0x80) | 0x30 | 0x06   // C128 mode, no cartridge
         case 6: return rcr | 0x30
         case 7: return p0l
         case 8: return p0h | 0xF0

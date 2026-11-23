@@ -63,7 +63,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             c64.standard = std
         }
         for item in standardItems { item.state = item.representedObject as? String == c64.standard.rawValue ? .on : .off }
-        if UserDefaults.standard.string(forKey: "Model") == "c128", let c128 = roms.c128 { c64.setC128(c128) }
+        if UserDefaults.standard.string(forKey: "Model") == "c128", let c128 = roms.c128 {
+            c64.setC128(c128)
+            c64.key4080Down = UserDefaults.standard.bool(forKey: "C128Boot80")
+        }
         updateModelItems(c128: c64.isC128)
         c64.onModelChanged = { [weak self] in   // GO64 typed on the C128
             DispatchQueue.main.async { self?.updateModelItems(c128: false) }
@@ -382,7 +385,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         UserDefaults.standard.set(wantC128 ? "c128" : "c64", forKey: "Model")
         updateModelItems(c128: wantC128)
-        runner.perform { $0.setC128(c128) }
+        let boot80 = UserDefaults.standard.bool(forKey: "C128Boot80")
+        runner.perform { $0.setC128(c128); $0.key4080Down = boot80 }
+    }
+
+    /// The C128's 40/80 DISPLAY key: when down, C128 mode starts on the 80-column screen.
+    @objc func toggleBoot80(_ sender: NSMenuItem) {
+        let on = sender.state != .on
+        sender.state = on ? .on : .off
+        UserDefaults.standard.set(on, forKey: "C128Boot80")
+        runner.perform { $0.key4080Down = on }
     }
 
     private func updateModelItems(c128: Bool) {
@@ -709,9 +721,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             item.representedObject = $0.1
             return item
         }
+        let boot80Item = mi("C128 Starts in 80 Columns (40/80 Key Down)", #selector(toggleBoot80(_:)))
+        boot80Item.state = UserDefaults.standard.bool(forKey: "C128Boot80") ? .on : .off
         add("Machine", [
             modelItems[0],
             modelItems[1],
+            boot80Item,
             .separator(),
             standardItem,
             .separator(),
