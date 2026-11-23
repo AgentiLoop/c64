@@ -151,6 +151,7 @@ C64_SLOW_TESTS=1 swift test -c release -Xswiftc -enable-testing --filter testFor
 | ⌘V | Paste text as typing |
 | ⌘J | Warp mode |
 | ⌘1 / ⌘2 / ⌘3 | View: full border / small border / no border |
+| ⌘4 / ⌘5 / ⌘6 | View: C128 display automatic / 40 columns (VIC-II) / 80 columns (VDC), like the input switch on a monitor |
 | ⌘D / ⌘E / ⌘N | Attach / eject / create D64 in drive 8 |
 | ⌘L | Instant Load on/off (copies files straight from the disk image; directory, custom loaders still use the real drive) |
 | ⌘P | Pause / resume (handy for screenshots) |

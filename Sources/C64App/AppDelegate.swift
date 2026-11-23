@@ -32,6 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var pendingOpen: URL?
     var fastLoadItem: NSMenuItem!
     var borderItems: [NSMenuItem] = []
+    var displayItems: [NSMenuItem] = []
     var standardItems: [NSMenuItem] = []
     var modelItems: [NSMenuItem] = []
 
@@ -432,6 +433,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         UserDefaults.standard.set(on, forKey: "C128Boot80")
         runner.perform { $0.key4080Down = on }
     }
+
+/// Chooses which C128 video output the window shows: automatic, the 40-column (VIC-II) or the
+    /// 80-column (VDC) picture. The machine itself is not touched.
+    @objc func setDisplay(_ sender: NSMenuItem) {
+        guard let display = EmulatorRunner.Display(rawValue: sender.tag) else { return }
+        runner.display = display
+        for item in displayItems { item.state = item === sender ? .on : .off }
+    }
+
+    
 
     private func updateModelItems(c128: Bool) {
         for item in modelItems { item.state = (item.representedObject as? String == "c128") == c128 ? .on : .off }
@@ -846,7 +857,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             item.tag = i
             return item
         }
-        add("View", borderItems)
+        displayItems = ["C128 Display: Automatic", "C128 Display: 40 Columns", "C128 Display: 80 Columns"].enumerated().map { i, title in
+            let item = mi(title, #selector(setDisplay(_:)), "\(i + 4)")
+            item.tag = i
+            item.state = i == 0 ? .on : .off
+            return item
+        }
+        add("View", borderItems + [.separator()] + displayItems)
         let phoneBook = NSMenu(title: "Phone Book")
         for entry in AppDelegate.loadPhoneBook() {
             let item = mi("\(entry.name)  —  \(entry.host):\(entry.port)", #selector(dialPhoneBook(_:)))

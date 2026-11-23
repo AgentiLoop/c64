@@ -16,6 +16,9 @@ final class EmulatorRunner {
     private(set) var frontIs80 = false
     private(set) var frontSize = (width: VICII.screenWidth, height: VICII.screenHeight)
     private var vdcBuffer: [UInt32] = []
+    /// Which of the C128's two video outputs the window shows, like the input switch on a monitor.
+    enum Display: Int { case automatic, columns40, columns80 }
+    var display = Display.automatic
     var warp = false
     /// Run at full speed while the Datasette motor is turning.
     var warpWhileTape = true
@@ -77,7 +80,11 @@ final class EmulatorRunner {
 
             if !warp || frameCounter % 10 == 0 {
                 lock.lock()
-                frontIs80 = c64.showing80Columns
+                switch display {
+                case .automatic: frontIs80 = c64.showing80Columns
+                case .columns40: frontIs80 = false
+                case .columns80: frontIs80 = c64.isC128
+                }
                 if frontIs80 {
                     c64.renderVDC(into: &vdcBuffer)
                     frontBuffer = vdcBuffer
