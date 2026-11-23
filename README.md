@@ -29,6 +29,25 @@ which keeps the app up to date from GitHub releases.
 
 Requires macOS 14 or later.
 
+## Commodore 128 built in
+
+The same app is also a Commodore 128. **Machine ▸ Commodore 128** restarts it in C128 mode with
+BASIC 7.0, 128K, the 40-column VIC-II screen and the 80-column 8563 VDC screen.
+**View ▸ C128 Display** (⌘4 / ⌘5 / ⌘6) switches the window between the two video outputs, like the
+input switch on a monitor. It needs the C128 ROMs (see [ROMs](#roms)); the details are in the
+[Status](#status) table.
+
+<table>
+  <tr>
+    <td width="50%"><img alt="Bucket Wars 1.3 title screen on the C128's 80-column display" src="docs/c128-bucketwars-title.png" /></td>
+    <td width="50%"><img alt="Bucket Wars 1.3 map screen on the C128's 80-column display" src="docs/c128-bucketwars-map.png" /></td>
+  </tr>
+  <tr>
+    <td align="center">Bucket Wars 1.3 title screen, 80 columns</td>
+    <td align="center">Bucket Wars 1.3 map, 80 columns</td>
+  </tr>
+</table>
+
 ## Status
 
 | Part | State |
