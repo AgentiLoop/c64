@@ -25,6 +25,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var disk9URL: URL?
     var disk9: D81Image?
     var baseTitle = "C64"
+    var showFPS = UserDefaults.standard.bool(forKey: "ShowFPS")
+    var fpsText = ""
+    var fpsStart = 0.0, fpsEmulated = 0, fpsDrawn = 0
     var lastLED = false
     var lastTape = false
     /// The TAP file in the Datasette (recordings are written back to it).
@@ -150,11 +153,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         view.refresh()
         let led = (runner.c64.drive8?.ledOn ?? false) || (runner.c64.drive9?.ledOn ?? false)
         let tape = runner.c64.datasette.mode != .stopped && runner.c64.cassetteMotor
-        if led != lastLED || tape != lastTape {
+        fpsDrawn += 1
+        let now = ProcessInfo.processInfo.systemUptime
+        var fpsChanged = false
+        if now - fpsStart >= 1 {
+            let emulated = runner.emulatedFrames
+            let elapsed = now - fpsStart
+            let text = showFPS && fpsStart > 0
+                ? String(format: " — %.1f fps (shown %.1f) · %@ %d Hz",
+                         Double(emulated - fpsEmulated) / elapsed, Double(fpsDrawn) / elapsed,
+                         runner.c64.standard == .pal ? "PAL" : "NTSC", runner.c64.mainsHz)
+                : ""
+            fpsStart = now; fpsEmulated = emulated; fpsDrawn = 0
+            fpsChanged = text != fpsText || window.title.hasSuffix(text) == false
+            fpsText = text
+        }
+        if led != lastLED || tape != lastTape || fpsChanged {
             lastLED = led
             lastTape = tape
-            window.title = (led ? "● " : "") + (tape ? "▶ " : "") + baseTitle
+            window.title = (led ? "● " : "") + (tape ? "▶ " : "") + baseTitle + fpsText
         }
+    }
+
+    @objc func toggleShowFPS(_ sender: NSMenuItem) {
+        showFPS.toggle()
+        sender.state = showFPS ? .on : .off
+        UserDefaults.standard.set(showFPS, forKey: "ShowFPS")
+        fpsStart = 0
     }
 
     // MARK: - Joystick (event driven, independent of video)
@@ -919,7 +944,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             item.state = i == UserDefaults.standard.integer(forKey: "C128Display") ? .on : .off
             return item
         }
-        add("View", borderItems + [.separator()] + displayItems)
+        let fpsItem = mi("Show FPS and Refresh Rate", #selector(toggleShowFPS(_:)), "f", [.command, .shift])
+        fpsItem.state = showFPS ? .on : .off
+        add("View", borderItems + [.separator()] + displayItems + [.separator(), fpsItem])
         let phoneBook = NSMenu(title: "Phone Book")
         for entry in AppDelegate.loadPhoneBook() {
             let item = mi("\(entry.name)  —  \(entry.host):\(entry.port)", #selector(dialPhoneBook(_:)))

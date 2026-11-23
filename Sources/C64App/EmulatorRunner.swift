@@ -11,6 +11,9 @@ final class EmulatorRunner {
     private var pending: [(C64) -> Void] = []
     private var running = false
     private var callbackPending = false
+    private var completedFrames = 0
+    /// Pictures the machine has completed (VIC-II, or VDC when showing 80 columns), for the FPS readout.
+    var emulatedFrames: Int { lock.lock(); defer { lock.unlock() }; return completedFrames }
     private(set) var frontBuffer = [UInt32](repeating: 0, count: VICII.screenWidth * VICII.screenHeight)
     var onFrame: (() -> Void)?
     /// True when `frontBuffer` holds the C128's 80-column (VDC) picture instead of the VIC-II's.
@@ -123,6 +126,7 @@ final class EmulatorRunner {
             vicFrame = c64.vic.frameCount
             vdcPicture = c64.vdcPictureCount
             let fresh = as80 ? newVDC : newVIC
+            if fresh { lock.lock(); completedFrames += 1; lock.unlock() }
             let t = EmulatorRunner.now()
             // Each display publishes on its own completed picture; warp limits copies to ~60 per second.
             if (fresh || as80 != frontIs80) && (!warp || t - lastPublish >= 1.0 / 60) {
