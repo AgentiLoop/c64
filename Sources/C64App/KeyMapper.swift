@@ -9,7 +9,11 @@ final class KeyMapper {
 
     private var active: [UInt16: Press] = [:]
     private var macShift = false
-    private(set) var joystickBits: UInt8 = 0
+    private var keyBits: UInt8 = 0
+    private var rightOption = false
+    /// Right Option sends Up (jump) instead of Fire; numpad 0 and 5 stay Fire.
+    var fireIsUp = false
+    var joystickBits: UInt8 { keyBits | (rightOption ? (fireIsUp ? 0x01 : 0x10) : 0) }
     var cursorKeysAsJoystick = false
     /// Called with (key, pressed) to change the matrix.
     let apply: (C64Key, Bool) -> Void
@@ -66,8 +70,8 @@ final class KeyMapper {
 
     /// Returns true if handled.
     func keyDown(_ event: NSEvent) -> Bool {
-        if let j = KeyMapper.joystickKeys[event.keyCode] { joystickBits |= j; return true }
-        if cursorKeysAsJoystick, let j = KeyMapper.cursorJoystick[event.keyCode] { joystickBits |= j; return true }
+        if let j = KeyMapper.joystickKeys[event.keyCode] { keyBits |= j; return true }
+        if cursorKeysAsJoystick, let j = KeyMapper.cursorJoystick[event.keyCode] { keyBits |= j; return true }
         if event.isARepeat { return true }
         let press: Press?
         if let p = KeyMapper.special[event.keyCode] {
@@ -87,8 +91,8 @@ final class KeyMapper {
     }
 
     func keyUp(_ event: NSEvent) {
-        if let j = KeyMapper.joystickKeys[event.keyCode] { joystickBits &= ~j; return }
-        if let j = KeyMapper.cursorJoystick[event.keyCode], cursorKeysAsJoystick { joystickBits &= ~j; return }
+        if let j = KeyMapper.joystickKeys[event.keyCode] { keyBits &= ~j; return }
+        if let j = KeyMapper.cursorJoystick[event.keyCode], cursorKeysAsJoystick { keyBits &= ~j; return }
         guard let p = active.removeValue(forKey: event.keyCode) else { return }
         for k in p.keys {
             // Only release if no other active press still uses the key.
@@ -103,13 +107,14 @@ final class KeyMapper {
         // Device-dependent bits: 0x20 = left option (C= key), 0x40 = right option (joystick fire).
         apply(.commodore, f.rawValue & 0x20 != 0)
         apply(.control, f.contains(.control))
-        if f.rawValue & 0x40 != 0 { joystickBits |= 0x10 } else { joystickBits &= ~0x10 }
+        rightOption = f.rawValue & 0x40 != 0
         updateShift()
     }
 
     func releaseAll() {
         active.removeAll()
-        joystickBits = 0
+        keyBits = 0
+        rightOption = false
         macShift = false
     }
 

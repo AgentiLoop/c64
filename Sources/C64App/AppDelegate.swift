@@ -148,19 +148,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             window.title = (led ? "● " : "") + (tape ? "▶ " : "") + baseTitle
         }
         var bits = keyMapper.joystickBits
+        let jump = keyMapper.fireIsUp   // button A is Up (jump); the other buttons stay Fire
         for pad in GCController.controllers() {
             if let gp = pad.extendedGamepad {
                 if gp.dpad.up.isPressed || gp.leftThumbstick.yAxis.value > 0.5 { bits |= 0x01 }
                 if gp.dpad.down.isPressed || gp.leftThumbstick.yAxis.value < -0.5 { bits |= 0x02 }
                 if gp.dpad.left.isPressed || gp.leftThumbstick.xAxis.value < -0.5 { bits |= 0x04 }
                 if gp.dpad.right.isPressed || gp.leftThumbstick.xAxis.value > 0.5 { bits |= 0x08 }
-                if gp.buttonA.isPressed || gp.buttonB.isPressed || gp.rightTrigger.isPressed { bits |= 0x10 }
+                if gp.buttonA.isPressed { bits |= jump ? 0x01 : 0x10 }
+                if gp.buttonB.isPressed || gp.rightTrigger.isPressed || (jump && gp.buttonX.isPressed) { bits |= 0x10 }
             } else if let mg = pad.microGamepad {
                 if mg.dpad.up.isPressed { bits |= 0x01 }
                 if mg.dpad.down.isPressed { bits |= 0x02 }
                 if mg.dpad.left.isPressed { bits |= 0x04 }
                 if mg.dpad.right.isPressed { bits |= 0x08 }
-                if mg.buttonA.isPressed { bits |= 0x10 }
+                if mg.buttonA.isPressed { bits |= jump ? 0x01 : 0x10 }
+                if jump && mg.buttonX.isPressed { bits |= 0x10 }
             }
         }
         let port = joystickPort
@@ -750,6 +753,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         cursorJoyItem.state = keyMapper.cursorKeysAsJoystick ? .on : .off
     }
 
+    /// Fire button sends Up (jump) for games that jump with Up; a second button stays Fire.
+    @objc func toggleFireIsUp(_ sender: NSMenuItem) {
+        keyMapper.fireIsUp.toggle()
+        sender.state = keyMapper.fireIsUp ? .on : .off
+    }
+
     @objc func toggleMute(_ sender: NSMenuItem) {
         audio.muted.toggle()
         sender.state = audio.muted ? .on : .off
@@ -822,7 +831,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         ])
         swapItem = mi("Joystick in Port 1", #selector(swapJoysticks(_:)), "k")
         cursorJoyItem = mi("Cursor Keys Control Joystick", #selector(toggleCursorJoystick(_:)), "u")
-        add("Input", [swapItem, cursorJoyItem])
+        add("Input", [swapItem, cursorJoyItem, mi("Fire Button Is Up (Jump)", #selector(toggleFireIsUp(_:)))])
         fastLoadItem = mi("Instant Load (Skip Disk Wait)", #selector(toggleFastLoad(_:)), "l")
         diskWarpItem = mi("Warp While Disk Loads", #selector(toggleDiskWarp(_:)))
         add("Drive", [
