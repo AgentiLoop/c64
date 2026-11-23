@@ -7,9 +7,15 @@ final class ModemTests: XCTestCase {
     var sent: [UInt8] = []
     var hungUp = 0
 
-    func makeMachine(_ port: C64.ModemPort = .userPort) throws -> (C64, HayesModem) {
+    func makeMachine(_ port: C64.ModemPort = .userPort, c128: Bool = false, eighty: Bool = false) throws -> (C64, HayesModem) {
         guard let roms = ROMSet.load() else { throw XCTSkip("C64 ROMs not installed") }
         let c64 = C64(roms: roms)
+        if c128 {
+            guard let r = roms.c128 else { throw XCTSkip("C128 ROMs not installed") }
+            c64.setC128(r)
+            c64.key4080Down = eighty
+            c64.reset()
+        }
         let modem = HayesModem()
         modem.baud = 2400   // on the user port the terminal runs at 1200; the modem must pick that up from "AT"
         modem.onDial = { [unowned self] in self.dialed = ($0, $1) }
@@ -17,16 +23,18 @@ final class ModemTests: XCTestCase {
         modem.onHangUp = { [unowned self] in self.hungUp += 1 }
         c64.modemPort = port
         c64.modem = modem
-        for _ in 0..<150 { c64.runFrame() }
+        for _ in 0..<(c128 ? 300 : 150) { c64.runFrame() }
         let prg = try Data(contentsOf: URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().appendingPathComponent("../../Resources/TERM.PRG"))
+            .deletingLastPathComponent().appendingPathComponent(c128 ? "../../Resources/TERM128.PRG" : "../../Resources/TERM.PRG"))
         c64.loadPRG([UInt8](prg))
-        c64.ram[0x0810] = [.userPort: 0, .swiftLink: 1, .turbo232: 2][port] ?? 0   // what the app does
-        c64.typeIntoBuffer("RUN\n")
+        let iface: UInt8 = [.userPort: 0, .swiftLink: 1, .turbo232: 2][port] ?? 0   // what the app does
+        if c128 { c64.ram[0x1C10] = iface; c64.typeIntoBuffer("SYS7181\n") } else { c64.ram[0x0810] = iface; c64.typeIntoBuffer("RUN\n") }
         return (c64, modem)
     }
 
-    func screen(_ c64: C64) -> String { c64.screenText().joined(separator: "\n") }
+    func screen(_ c64: C64) -> String {
+        (c64.showing80Columns ? c64.vdcText() : c64.screenText()).joined(separator: "\n")
+    }
 
     func run(_ c64: C64, until text: String, frames: Int = 300) -> Bool {
         for _ in 0..<frames {
@@ -37,8 +45,8 @@ final class ModemTests: XCTestCase {
     }
 
     /// Greeting, dialing, a long burst with nothing lost, typing, F7 hang-up, carrier loss.
-    func callBBS(_ port: C64.ModemPort, baud: Int) throws {
-        let (c64, modem) = try makeMachine(port)
+    func callBBS(_ port: C64.ModemPort, baud: Int, c128: Bool = false, eighty: Bool = false) throws {
+        let (c64, modem) = try makeMachine(port, c128: c128, eighty: eighty)
         XCTAssertTrue(run(c64, until: "OK"), screen(c64))
         XCTAssertEqual(modem.baud, baud)
 
@@ -254,5 +262,12 @@ final class ModemTests: XCTestCase {
         XCTAssertTrue(run(c64, until: "FILE NAME"), screen(c64))
         c64.queueTyping("nothere\n")
         XCTAssertTrue(run(c64, until: "READ THE FILE", frames: 3000), screen(c64))
+    }
+
+    // C128 mode: TERM128.PRG at $1C01 with buffers at $1300; 40 columns on the VIC-II, 80 on the VDC.
+    func testC128TerminalOnUserPort() throws { try callBBS(.userPort, baud: 1200, c128: true) }
+    func testC128TerminalOnSwiftLink() throws { try callBBS(.swiftLink, baud: 38400, c128: true) }
+    func testC128TerminalIn80Columns() throws {
+        try callBBS(.swiftLink, baud: 38400, c128: true, eighty: true)
     }
 }

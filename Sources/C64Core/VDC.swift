@@ -12,8 +12,12 @@ extension C64 {
                                  0xFF00AAAA, 0xFF55FFFF, 0xFFAA0000, 0xFFFF5555, 0xFFAA00AA, 0xFFFF55FF,
                                  0xFFAA5500, 0xFFFFFF55, 0xFFAAAAAA, 0xFFFFFFFF]
 
-    /// True while the C128 KERNAL's active screen is the 80-column one (40/80 key at reset, ESC X).
-    public var showing80Columns: Bool { c128 != nil && ram[0xD7] & 0x80 != 0 }
+    /// True while the 80-column screen should be shown: the KERNAL's active screen is the 80-column
+    /// one (40/80 key at reset, ESC X), or a program switched the VIC-II's display off (bit 4 of
+    /// $D011), as VDC demos and games do — on a real C128 the other monitor would show their picture.
+    public var showing80Columns: Bool {
+        c128 != nil && (ram[0xD7] & 0x80 != 0 || vic.read(0x11) & 0x10 == 0)
+    }
 
     /// The 40/80 DISPLAY key: down makes the C128 start in 80 columns (read at reset).
     public var key4080Down: Bool {

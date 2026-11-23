@@ -36,7 +36,7 @@ OPS = {
     ("ASL", "imp"): 0x0A, ("TAY", "imp"): 0xA8, ("DEX", "imp"): 0xCA,
     ("ADC", "abs"): 0x6D, ("SBC", "imm"): 0xE9, ("EOR", "imm"): 0x49,
     ("CPX", "imm"): 0xE0, ("CPX", "abs"): 0xEC, ("STX", "abs"): 0x8E, ("CMP", "absx"): 0xDD,
-    ("BPL", "rel"): 0x10, ("BMI", "rel"): 0x30, ("INC", "abs"): 0xEE, ("INX", "imp"): 0xE8, ("TYA", "imp"): 0x98,
+    ("BIT", "zp"): 0x24, ("SBC", "abs"): 0xED, ("BPL", "rel"): 0x10, ("BMI", "rel"): 0x30, ("INC", "abs"): 0xEE, ("INX", "imp"): 0xE8, ("TYA", "imp"): 0x98,
     ("DEC", "abs"): 0xCE, ("PHP", "imp"): 0x08, ("PLP", "imp"): 0x28, ("ADC", "absx"): 0x7D,
 }
 ONE_BYTE = {"imm", "zp", "indy", "rel"}
@@ -114,7 +114,7 @@ HEAD, TAIL, STR = 0xFB, 0xFC, 0xFD      # free zero page: ring buffer indexes, s
 RXBUF = 0xC000                          # 256-byte receive ring buffer (SwiftLink)
 QTSW, INSRT = 0xD4, 0xD8               # screen editor quote mode / insert count
 PLOT = 0xFFF0
-F1, F3, F5 = 0x85, 0x86, 0x87
+F1, F3, F5, F2 = 0x85, 0x86, 0x87, 0x89
 CHRIN = 0xFFCF
 CLOSE, STOP, ST = 0xFFC3, 0xFFE1, 0x90
 SOH, EOT, ACK, NAK, CAN = 0x01, 0x04, 0x06, 0x15, 0x18
@@ -178,14 +178,37 @@ def petscii_to_ascii():
     return t
 
 
-def build():
-    a = Asm(0x0801)
-    a.byte(0x0B, 0x08, 0x0A, 0x00, 0x9E, 0x32, 0x30, 0x36, 0x31, 0x00, 0x00, 0x00)   # 10 SYS2061
+C64_LAYOUT = dict(ORG=0x0801, CONFIG_ADDRESS=0x0810, RXBUF=0xC000, BLK=0xC100, HELD=0xC200, FNAME=0xC280,
+                  QTSW=0xD4, INSRT=0xD8, RIDBS=0x029C, RS232_RX_ON=0xEF7E, C128=False)
+# C128 mode: BASIC starts at $1C01; $1300-$1BFF is free RAM (the C64's $C000 area is KERNAL ROM here);
+# screen editor and RS-232 variables live elsewhere (C128 KERNAL 318020-05).
+C128_LAYOUT = dict(ORG=0x1C01, CONFIG_ADDRESS=0x1C10, RXBUF=0x1300, BLK=0x1400, HELD=0x1500, FNAME=0x1580,
+                   QTSW=0xF4, INSRT=0xF5, RIDBS=0x0A19, RS232_RX_ON=0xE6C2, C128=True)
+C128 = False
+RIDBS, RS232_RX_ON = 0x029C, 0xEF7E
+BLNSW128, BLNON128, GDBLN128, GDCOL128, PNT128, USER128, PNTR128, MODE128 = 0x0A27, 0x0A26, 0x0A29, 0x0A2A, 0xE0, 0xE2, 0xEC, 0xD7
+SETBNK = 0xFF68
+
+
+def build(layout=C64_LAYOUT):
+    globals().update(layout)
+    a = Asm(ORG)
+    sys = str(ORG + 12).encode()
+    nxt = ORG + 10
+    a.byte(nxt & 0xFF, nxt >> 8, 0x0A, 0x00, 0x9E, *sys, 0x00, 0x00, 0x00)   # 10 SYS start
     a("JMP", "abs", "start")
     assert a.pc == CONFIG_ADDRESS
     a.label("iface"); a.byte(0)
 
     a.label("start")
+    if C128:                                                       # file names and data in bank 0
+        a("LDA", "imm", 0); a("LDX", "imm", 0); a("JSR", "abs", SETBNK)
+        # Redefine KEY 1-8 as their own codes (F1 $85, F2 $89, F3 $86 ... F8 $8C) instead of "GRAPHIC",
+        # "DLOAD"...: $1000-$1009 hold the lengths, the strings follow at $100A. A zero length would make
+        # the key do nothing. SHIFT+RUN and HELP get empty definitions.
+        a("LDX", "imm", 19)
+        a.label("fkeys")
+        a("LDA", "absx", "fkeytab"); a("STA", "absx", 0x1000); a("DEX"); a("BPL", "rel", "fkeys")
     a("LDA", "abs", "iface"); a("CMP", "imm", 3); a("BCC", "rel", "valid")
     a("LDA", "imm", 0); a("STA", "abs", "iface")
     a.label("valid")
@@ -227,7 +250,7 @@ def build():
     a("PHA"); a("JSR", "abs", "curoff"); a("PLA"); a("JSR", "abs", "show")
     a("JMP", "abs", "loop")
     a.label("idle")
-    a("LDA", "imm", 0); a("STA", "zp", BLNSW)                     # cursor blinks while waiting
+    a("JSR", "abs", "cursoron")                                    # cursor blinks while waiting
     a("JSR", "abs", GETIN); a("BEQ", "rel", "loop")
     a("CMP", "imm", F7); a("BEQ", "rel", "hangup")
     a("CMP", "imm", F1); a("BEQ", "rel", "toggle")
@@ -235,6 +258,11 @@ def build():
     a.label("notf3")
     a("CMP", "imm", F5); a("BNE", "rel", "notf5"); a("JMP", "abs", "upload")
     a.label("notf5")
+    if C128:
+        a("CMP", "imm", F2); a("BNE", "rel", "notf2")
+        a("JSR", "abs", "curoff"); a("LDA", "imm", 27); a("JSR", "abs", CHROUT)
+        a("LDA", "imm", 0x58); a("JSR", "abs", CHROUT); a("JMP", "abs", "loop")
+        a.label("notf2")
     a("JSR", "abs", "sendkey"); a("JMP", "abs", "loop")
 
     a.label("toggle")                                             # F1: PETSCII <-> ASCII/ANSI
@@ -260,10 +288,11 @@ def build():
     a("JMP", "abs", "loop")
 
     a.label("wait")                                               # about 1.3 seconds
-    a("LDA", "zp", JIFFY); a("CLC"); a("ADC", "imm", 65); a("STA", "abs", "tmp")
+    # Elapsed time, not equality: the C128's clock can advance two jiffies at once.
+    a("LDA", "zp", JIFFY); a("STA", "abs", "tmp")
     a.label("w1")
-    a("LDA", "zp", JIFFY); a("CMP", "abs", "tmp")
-    a("BNE", "rel", "w1")
+    a("LDA", "zp", JIFFY); a("SEC"); a("SBC", "abs", "tmp"); a("CMP", "imm", 65)
+    a("BCC", "rel", "w1")
     a("RTS")
 
     # recv: C clear and the byte in A, or C set when nothing is waiting.
@@ -271,10 +300,10 @@ def build():
     a("LDA", "abs", "iface"); a("BNE", "rel", "srecv")
     # GETIN returns 0 both for "nothing" and for a received $00: a real byte moves the buffer start (RIDBS).
     # (GETIN has to be called even when the buffer is empty: it switches the KERNAL receiver on.)
-    a("LDA", "abs", 0x029C); a("STA", "abs", "ridbs")
+    a("LDA", "abs", RIDBS); a("STA", "abs", "ridbs")
     a("LDX", "imm", 2); a("JSR", "abs", CHKIN); a("JSR", "abs", GETIN)
     a("PHA"); a("JSR", "abs", CLRCHN); a("PLA"); a("BNE", "rel", "rgot")
-    a("LDX", "abs", 0x029C); a("CPX", "abs", "ridbs"); a("BEQ", "rel", "none")
+    a("LDX", "abs", RIDBS); a("CPX", "abs", "ridbs"); a("BEQ", "rel", "none")
     a.label("rgot")
     a("CLC"); a("RTS")
     a.label("none")
@@ -298,25 +327,47 @@ def build():
     a("PLA"); a("STA", "abs", ACIA_DATA); a("RTS")
 
     # NMI: ACIA receive → ring buffer; hold RTS when it is nearly full. Other NMIs (RESTORE) go to the KERNAL.
+    # On the C128 the KERNAL's NMI entry ($FF05) has already saved A, X, Y and the MMU configuration
+    # and banked the system in; handlers return through $FF33, which restores them.
     a.label("nmi")
-    a("PHA"); a("TXA"); a("PHA")
+    if not C128:
+        a("PHA"); a("TXA"); a("PHA")
     a("LDA", "abs", ACIA_STATUS); a("AND", "imm", 0x08); a("BEQ", "rel", "notours")
     a("LDA", "abs", ACIA_DATA); a("LDX", "zp", TAIL); a("STA", "absx", RXBUF); a("INC", "zp", TAIL)
     a("LDA", "zp", TAIL); a("SEC"); a("SBC", "zp", HEAD); a("CMP", "imm", 200); a("BCC", "rel", "nret")
     a("LDA", "imm", CMD_HOLD); a("STA", "abs", ACIA_COMMAND); a("STA", "abs", "paused")
     a.label("nret")
-    a("PLA"); a("TAX"); a("PLA"); a("RTI")
+    if C128:
+        a("JMP", "abs", 0xFF33)
+    else:
+        a("PLA"); a("TAX"); a("PLA"); a("RTI")
     a.label("notours")
-    a("PLA"); a("TAX"); a("PLA"); a("JMP", "ind", "oldnmi")
+    if not C128:
+        a("PLA"); a("TAX"); a("PLA")
+    a("JMP", "ind", "oldnmi")
 
     # curoff: stop the blinking cursor and put the character under it back.
+    a.label("cursoron")
+    if C128:
+        a("LDA", "imm", 0); a("STA", "abs", BLNSW128); a("RTS")   # 40 columns; 80 columns: VDC hardware cursor
+    else:
+        a("LDA", "imm", 0); a("STA", "zp", BLNSW); a("RTS")
     a.label("curoff")
-    a("LDA", "zp", BLNSW); a("BNE", "rel", "co_done")
-    a("SEI"); a("LDA", "imm", 1); a("STA", "zp", BLNSW)
-    a("LDA", "zp", BLNON); a("BEQ", "rel", "co_cli")
-    a("LDA", "imm", 0); a("STA", "zp", BLNON)
-    a("LDY", "zp", PNTR); a("LDA", "zp", GDBLN); a("STA", "indy", PNT)
-    a("LDA", "abs", GDCOL); a("STA", "indy", USER)
+    if C128:
+        a("LDA", "zp", MODE128); a("BMI", "rel", "co_done")          # 80 columns: nothing to undo
+        a("LDA", "abs", BLNSW128); a("BNE", "rel", "co_done")
+        a("SEI"); a("LDA", "imm", 1); a("STA", "abs", BLNSW128)
+        a("LDA", "abs", BLNON128); a("BPL", "rel", "co_cli")
+        a("AND", "imm", 0x7F); a("STA", "abs", BLNON128)
+        a("LDY", "zp", PNTR128); a("LDA", "abs", GDBLN128); a("STA", "indy", PNT128)
+        a("LDA", "abs", GDCOL128); a("STA", "indy", USER128)
+    else:
+        a("LDA", "zp", BLNSW); a("BNE", "rel", "co_done")
+        a("SEI"); a("LDA", "imm", 1); a("STA", "zp", BLNSW)
+        a("LDA", "zp", BLNON); a("BEQ", "rel", "co_cli")
+        a("LDA", "imm", 0); a("STA", "zp", BLNON)
+        a("LDY", "zp", PNTR); a("LDA", "zp", GDBLN); a("STA", "indy", PNT)
+        a("LDA", "abs", GDCOL); a("STA", "indy", USER)
     a.label("co_cli")
     a("CLI")
     a.label("co_done")
@@ -367,7 +418,7 @@ def build():
     a("SEC"); a("SBC", "imm", 0x41); a("TAX"); a("LDA", "absx", "movetab"); a("STA", "abs", "tmp2")
     a("LDA", "abs", "params"); a("BNE", "rel", "mv1"); a("LDA", "imm", 1)
     a.label("mv1")
-    a("CMP", "imm", 41); a("BCC", "rel", "mv2"); a("LDA", "imm", 40)
+    a("JSR", "abs", "width"); a("CMP", "abs", "wplus1"); a("BCC", "rel", "mv2"); a("LDA", "abs", "wcols")
     a.label("mv2")
     a("TAX")
     a.label("mvl")
@@ -379,8 +430,8 @@ def build():
     a.label("rowok")
     a("TAX")
     a("LDA", "abs", "nparams"); a("CMP", "imm", 2); a("BCC", "rel", "colz")
-    a("LDA", "abs", "params1"); a("JSR", "abs", "dec1"); a("CMP", "imm", 40); a("BCC", "rel", "colok")
-    a("LDA", "imm", 39); a("BNE", "rel", "colok")
+    a("JSR", "abs", "width"); a("LDA", "abs", "params1"); a("JSR", "abs", "dec1"); a("CMP", "abs", "wcols"); a("BCC", "rel", "colok")
+    a("LDA", "abs", "wcols"); a("SEC"); a("SBC", "imm", 1); a("JMP", "abs", "colok")
     a.label("colz")
     a("LDA", "imm", 0)
     a.label("colok")
@@ -671,18 +722,19 @@ def build():
     # Disk access switches KERNAL RS-232 receive off ($F0A4); switch it back on (user port only).
     a.label("rxon")
     a("LDA", "abs", "iface"); a("BNE", "rel", "rxr")
-    a("SEI"); a("JSR", "abs", 0xEF7E); a("CLI")                   # KERNAL: wait for the next start bit
+    a("SEI"); a("JSR", "abs", RS232_RX_ON); a("CLI")                   # KERNAL: wait for the next start bit
     a.label("rxr")
     a("RTS")
 
     a.label("getb")                                               # byte within `tmo` jiffies: C clear + A, else C set
-    a("LDA", "zp", JIFFY); a("CLC"); a("ADC", "abs", "tmo"); a("STA", "abs", "tend")
+    a("LDA", "zp", JIFFY); a("STA", "abs", "tend")                # start time
     a.label("gb1")
     a("JSR", "abs", "recv"); a("BCC", "rel", "gbr")
     a("JSR", "abs", STOP); a("BNE", "rel", "gb2")
     a("LDA", "imm", 1); a("STA", "abs", "aborted"); a("SEC"); a("RTS")
     a.label("gb2")
-    a("LDA", "zp", JIFFY); a("CMP", "abs", "tend"); a("BNE", "rel", "gb1"); a("SEC")
+    a("LDA", "zp", JIFFY); a("SEC"); a("SBC", "abs", "tend"); a("CMP", "abs", "tmo"); a("BCC", "rel", "gb1")
+    a("SEC")
     a.label("gbr")
     a("RTS")
     a.label("purge")                                              # skip input until a second of quiet
@@ -693,7 +745,7 @@ def build():
     a.label("readline")                                           # file name from the keyboard (max 16)
     a("LDA", "imm", 0); a("STA", "abs", "fnlen")
     a.label("rl1")
-    a("LDA", "imm", 0); a("STA", "zp", BLNSW); a("JSR", "abs", GETIN); a("BEQ", "rel", "rl1")
+    a("JSR", "abs", "cursoron"); a("JSR", "abs", GETIN); a("BEQ", "rel", "rl1")
     a("PHA"); a("JSR", "abs", "curoff"); a("PLA")
     a("CMP", "imm", 13); a("BEQ", "rel", "rl_done")
     a("CMP", "imm", 0x14); a("BEQ", "rel", "rl_del")
@@ -734,6 +786,16 @@ def build():
     for v in ("expect", "held", "retries", "aborted", "tmo", "tend", "bidx", "widx", "wlen", "fnlen", "eof", "sum"):
         a.label(v); a.byte(0)
     a.label("ridbs"); a.byte(0)
+    a.label("width")                                              # wcols = 40 or 80 (C128 80-column screen)
+    a("LDA", "imm", 40)
+    if C128:
+        a("BIT", "zp", MODE128); a("BPL", "rel", "w40"); a("LDA", "imm", 80)
+        a.label("w40")
+    a("STA", "abs", "wcols"); a("CLC"); a("ADC", "imm", 1); a("STA", "abs", "wplus1"); a("RTS")
+    a.label("wcols"); a.byte(40)
+    a.label("wplus1"); a.byte(41)
+    if C128:
+        a.label("fkeytab"); a.byte(1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0x85, 0x89, 0x86, 0x8A, 0x87, 0x8B, 0x88, 0x8C, 0, 0)
     a.label("tmp"); a.byte(0)
     a.label("paused"); a.byte(0)
     a.label("oldnmi"); a.byte(0x47); a.label("oldnmi1"); a.byte(0xFE)
@@ -744,7 +806,7 @@ def build():
     a.label("s_up"); a.text("User Port, 1200 baud\r")
     a.label("s_sl"); a.text("SwiftLink $DE00, 38400 baud\r")
     a.label("s_tb"); a.text("Turbo232 $DE00, 230400 baud\r")
-    a.label("s_help"); a.text("Dial: atdt host:port  (or use the Mac's\rModem menu).  F1 ASCII/ANSI,\rF3/F5 XMODEM download/upload (drive 8),\rF7 hangs up.\r\r")
+    a.label("s_help"); a.text("Dial: atdt host:port  (or use the Mac's\rModem menu).  F1 ASCII/ANSI,\rF3/F5 XMODEM download/upload (drive 8),\rF7 hangs up.\r" + ("F2 switches 40/80 columns.\r" if C128 else "") + "\r")
     a.label("s_ul"); a.text("\rXMODEM upload, file name: ")
     a.label("s_uwait"); a.text("Start the download on the BBS now (STOP cancels).\r")
     a.label("s_udone"); a.text("\rUpload complete.\r")
@@ -761,11 +823,12 @@ def build():
 
 
 def main():
-    prg = build()
     os.makedirs(os.path.join(ROOT, "Resources"), exist_ok=True)
-    with open(os.path.join(ROOT, "Resources", "TERM.PRG"), "wb") as f:
-        f.write(bytes(prg))
-    print(f"Wrote Resources/TERM.PRG ({len(prg)} bytes)")
+    for name, layout in (("TERM.PRG", C64_LAYOUT), ("TERM128.PRG", C128_LAYOUT)):
+        prg = build(layout)
+        with open(os.path.join(ROOT, "Resources", name), "wb") as f:
+            f.write(bytes(prg))
+        print(f"Wrote Resources/{name} ({len(prg)} bytes, ${ORG:04X}-${ORG + len(prg) - 3:04X})")
 
 
 if __name__ == "__main__":

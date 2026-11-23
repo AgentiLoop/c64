@@ -624,14 +624,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// Autostarts the bundled terminal on the selected interface (user port 1200, SwiftLink 38,400,
     /// Turbo232 230,400). The interface number goes into the program's config byte at $0810.
     @objc func loadTerminal(_ sender: Any?) {
-        guard let url = Bundle.main.url(forResource: "TERM", withExtension: "PRG"),
+        let c128 = runner.c64.isC128
+        guard let url = Bundle.main.url(forResource: c128 ? "TERM128" : "TERM", withExtension: "PRG"),
               let data = FileManager.default.contents(atPath: url.path) else { return }
         runner.perform { c64 in
             c64.reset()   // a terminal that is already running would otherwise read the typed RUN
             C64Autostart.ensureBooted(c64)
             c64.loadPRG([UInt8](data))
-            c64.ram[0x0810] = [.userPort: 0, .swiftLink: 1, .turbo232: 2][c64.modemPort] ?? 0
-            c64.typeIntoBuffer("RUN\n")
+            let iface: UInt8 = [.userPort: 0, .swiftLink: 1, .turbo232: 2][c64.modemPort] ?? 0
+            if c64.isC128 {
+                c64.ram[0x1C10] = iface                     // TERM128 runs at $1C0D (C128 BASIC area)
+                c64.typeIntoBuffer("SYS7181\n")
+            } else {
+                c64.ram[0x0810] = iface
+                c64.typeIntoBuffer("RUN\n")
+            }
         }
     }
 

@@ -105,8 +105,10 @@ final class UserPortInterface {
     /// Emulator-only flow control: waits while the KERNAL's 256-byte RS-232 input buffer is nearly
     /// full (a BASIC terminal can't keep up with 1200 baud), instead of letting it overflow.
     private func roomInKernalBuffer(_ c64: C64) -> Bool {
-        guard c64.ram[0xF7] != 0 || c64.ram[0xF8] != 0 else { return true }   // RIBUF not set up
-        let used = (Int(c64.ram[0x29B]) - Int(c64.ram[0x29C])) & 0xFF        // RIDBE - RIDBS
+        // RIBUF / RIDBE / RIDBS: C64 $F7/$F8, $029B/$029C; C128 $C8/$C9, $0A18/$0A19.
+        let (ribuf, ridbe) = c64.isC128 ? (0xC8, 0x0A18) : (0xF7, 0x029B)
+        guard c64.ram[ribuf] != 0 || c64.ram[ribuf + 1] != 0 else { return true }   // RIBUF not set up
+        let used = (Int(c64.ram[ridbe]) - Int(c64.ram[ridbe + 1])) & 0xFF            // RIDBE - RIDBS
         return used < 200
     }
 }

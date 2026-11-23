@@ -93,8 +93,8 @@ final class C128Memory {
     /// 8563 VDC: register select / status at $D600, data at $D601. Always ready, in vertical blank.
     /// Its RAM, the update address (R18/R19), data (R31) and block fill/copy (R30) work, so the
     /// screen editor can initialise and clear the 80-column screen, but nothing is displayed.
-    func vdcRead(_ a: Int) -> UInt8 {
-        if a & 1 == 0 { return 0xA2 }
+    func vdcRead(_ a: Int, cycles: UInt64 = 0, clockHz: Int = C64.palClock) -> UInt8 {
+        if a & 1 == 0 { return 0x80 | (vdcInVerticalBlank(cycles: cycles, clockHz: clockHz) ? 0x20 : 0) | 0x02 }
         let r = Int(vdcSelect & 0x3F)
         if r == 31 {
             let addr = vdcAddress
@@ -128,6 +128,21 @@ final class C128Memory {
         default:
             break
         }
+    }
+
+    /// Status bit 5: the VDC's beam is outside the displayed rows. The frame timing follows the
+    /// registers (16 MHz dot clock; R0 total characters per line, R22 character width, R4/R9/R5
+    /// total rows and lines, R6 displayed rows), so programs that wait for vertical blank keep going.
+    func vdcInVerticalBlank(cycles: UInt64, clockHz: Int) -> Bool {
+        let charWidth = Int(vdcRegs[22] >> 4) + 1
+        let lineDots = (Int(vdcRegs[0]) + 1) * charWidth
+        let cellLines = Int(vdcRegs[9] & 0x1F) + 1
+        let totalLines = max(1, (Int(vdcRegs[4]) + 1) * cellLines + Int(vdcRegs[5] & 0x1F))
+        let displayed = Int(vdcRegs[6]) * cellLines
+        let lineCycles = max(1.0, Double(lineDots) / 16_000_000 * Double(clockHz))
+        let frameCycles = lineCycles * Double(totalLines)
+        let pos = Double(cycles).truncatingRemainder(dividingBy: frameCycles)
+        return Int(pos / lineCycles) >= displayed
     }
 
     var vdcAddress: UInt16 {
@@ -185,7 +200,7 @@ extension C64 {
             switch a >> 8 {
             case 0xD4: return sid.read(a & 0x1F)
             case 0xD5: return m.mmuRead(a & 0xFF)
-            case 0xD6: return m.vdcRead(a)
+            case 0xD6: return m.vdcRead(a, cycles: cycles, clockHz: clockHz)
             case 0xD7: return 0xFF
             case 0xD0 where a & 0x3F == 0x30: return 0xFC | (m.fast ? 1 : 0)
             default: return readIO(a)

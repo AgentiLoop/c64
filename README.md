@@ -66,7 +66,10 @@ plug into real C64s. Plenty of Commodore BBSes are still online: see the [BBS li
 
 1. Choose **Modem ▸ Interface**, then **Modem ▸ Load Terminal Program**. The built-in terminal (machine code,
    PETSCII colour graphics, blinking cursor) starts on that interface: user port 1200, SwiftLink 38,400 or
-   Turbo232 230,400 baud.
+   Turbo232 230,400 baud. In C128 mode it loads a C128 build of the terminal (`TERM128.PRG` at $1C01)
+   that prints on whichever screen is active: start the C128 in 80 columns
+   (Machine ▸ C128 Starts in 80 Columns) for an 80-column terminal on the VDC, or press **F2** to
+   switch between 40 and 80 columns.
 2. Pick a board from **Modem ▸ Phone Book**, or type `ATDT host:port` in the terminal
    (e.g. `ATDT oasisbbs.hopto.org:6400`).
 3. Hang up with **F7** in the terminal, **Modem ▸ Hang Up**, or `+++` (wait a second) and `ATH`.
