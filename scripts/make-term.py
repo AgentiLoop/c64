@@ -802,7 +802,7 @@ def build(layout=C64_LAYOUT):
     a.label("rsname"); a.byte(0x08)
     a.label("t_lo"); [a.ref(("<", s)) for s in ("s_up", "s_sl", "s_tb")]
     a.label("t_hi"); [a.ref((">", s)) for s in ("s_up", "s_sl", "s_tb")]
-    a.label("s_banner"); a.text("\x93\x0e\x05C64 Terminal by Todd Bruss (C) 2026\r\r")
+    a.label("s_banner"); a.text("\x93\x0e\x05" + ("C128" if C128 else "C64") + " Terminal by Todd Bruss (C) 2026\r\r")
     a.label("s_up"); a.text("User Port, 1200 baud\r")
     a.label("s_sl"); a.text("SwiftLink $DE00, 38400 baud\r")
     a.label("s_tb"); a.text("Turbo232 $DE00, 230400 baud\r")
