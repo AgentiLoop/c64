@@ -510,13 +510,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         runner.perform { $0.key4080Down = on }
     }
 
-/// Chooses which C128 video output the window shows: automatic, the 40-column (VIC-II) or the
-    /// 80-column (VDC) picture. The machine itself is not touched.
+    /// Chooses which C128 video output the window shows: automatic, the 40-column (VIC-II) or the
+    /// 80-column (VDC) picture. 40 or 80 also makes the C128 print on that screen (like ESC X).
     @objc func setDisplay(_ sender: NSMenuItem) {
         guard let display = EmulatorRunner.Display(rawValue: sender.tag) else { return }
         runner.display = display
         UserDefaults.standard.set(sender.tag, forKey: "C128Display")
         for item in displayItems { item.state = item === sender ? .on : .off }
+        if display != .automatic {
+            runner.perform { $0.switchC128Screen(to80: display == .columns80) }
+        }
     }
 
     

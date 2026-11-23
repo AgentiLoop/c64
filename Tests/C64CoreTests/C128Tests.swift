@@ -87,6 +87,25 @@ final class C128Tests: XCTestCase {
         XCTAssertFalse(c64.showing80Columns)
     }
 
+    /// The window's 40/80 choice moves the C128's output: from a 40-column start, switching to
+    /// 80 columns puts READY. on the VDC, and back to 40 puts the next output on the VIC-II again.
+    func testSwitchC128Screen() throws {
+        let c64 = try makeMachine()
+        for _ in 0..<300 { c64.runFrame() }
+        XCTAssertFalse(c64.showing80Columns)
+        c64.switchC128Screen(to80: true)
+        c64.queueTyping("PRINT \"ON EIGHTY\"\n")
+        for _ in 0..<100 { c64.runFrame() }
+        XCTAssertTrue(c64.showing80Columns)
+        XCTAssertTrue(c64.vdcText().joined().contains("ON EIGHTY"), c64.vdcText().joined(separator: "\n"))
+        c64.switchC128Screen(to80: true)                             // already there: nothing queued
+        c64.switchC128Screen(to80: false)
+        c64.queueTyping("PRINT \"ON FORTY\"\n")
+        for _ in 0..<100 { c64.runFrame() }
+        XCTAssertFalse(c64.showing80Columns)
+        XCTAssertTrue(screen(c64).contains("ON FORTY"), screen(c64))
+    }
+
     /// FAST doubles the CPU speed (2 MHz), SLOW goes back to 1 MHz.
     func testFastRunsTwiceAsFast() throws {
         let c64 = try makeMachine()

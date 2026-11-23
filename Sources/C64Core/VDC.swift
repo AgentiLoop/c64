@@ -16,6 +16,15 @@ extension C64 {
         return m.mode80 || (m.programUsesVDC && vic.read(0x11) & 0x10 == 0)
     }
 
+    /// Makes the C128's screen editor print on the 80-column (VDC) or 40-column (VIC-II) screen,
+    /// as typing ESC X does: ESC ($1B) and X go into the keyboard buffer, so the KERNAL swaps
+    /// screens the next time it reads the keyboard (at READY, INPUT or GET). Does nothing on the C64
+    /// or when that screen is already active.
+    public func switchC128Screen(to80: Bool) {
+        guard let m = c128, m.mode80 != to80 else { return }
+        typeQueue += [0x1B, 0x58]
+    }
+
     /// The 40/80 DISPLAY key: down makes the C128 start in 80 columns (read at reset).
     public var key4080Down: Bool {
         get { c128?.key4080Down ?? false }
