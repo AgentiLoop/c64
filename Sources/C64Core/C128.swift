@@ -27,6 +27,8 @@ final class C128Memory {
     var p0l: UInt8 = 0, p0h: UInt8 = 0, p1l: UInt8 = 1, p1h: UInt8 = 0
     var p0hLatch: UInt8 = 0, p1hLatch: UInt8 = 0
     var vdcSelect: UInt8 = 0
+    /// Set when the MMU mode register selects C64 mode; the machine then restarts as a C64.
+    var go64Requested = false
     var vdcRegs = [UInt8](repeating: 0, count: 64)
     var vdcRAM = [UInt8](repeating: 0, count: 0x10000)
 
@@ -70,7 +72,9 @@ final class C128Memory {
         switch reg {
         case 0: cr = v
         case 1...4: pcr[reg - 1] = v
-        case 5: mcr = v
+        case 5:
+            mcr = v
+            if v & 0x40 != 0 { go64Requested = true }          // GO64: switch to C64 mode
         case 6: rcr = v
         case 7: p0l = v; p0h = p0hLatch
         case 8: p0hLatch = v & 0x0F
@@ -134,6 +138,14 @@ extension C64 {
     }
 
     public var isC128: Bool { c128 != nil }
+
+    /// Finishes a GO64: the C128 ROMs and MMU go away and the machine restarts as a C64.
+    func checkGo64() {
+        guard let m = c128, m.go64Requested else { return }
+        c128 = nil
+        reset()
+        onModelChanged?()
+    }
 
     @inline(__always) func ramRead128(_ m: C128Memory, _ a: Int) -> UInt8 {
         let (bank, addr) = m.locate(a)

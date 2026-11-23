@@ -65,6 +65,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         for item in standardItems { item.state = item.representedObject as? String == c64.standard.rawValue ? .on : .off }
         if UserDefaults.standard.string(forKey: "Model") == "c128", let c128 = roms.c128 { c64.setC128(c128) }
         updateModelItems(c128: c64.isC128)
+        c64.onModelChanged = { [weak self] in   // GO64 typed on the C128
+            DispatchQueue.main.async { self?.updateModelItems(c128: false) }
+        }
         runner = EmulatorRunner(c64: c64, audio: audio)
         modemLink = ModemLink(runner: runner)
         applyModemPort(C64.ModemPort(rawValue: UserDefaults.standard.string(forKey: "ModemPort") ?? "") ?? .userPort)

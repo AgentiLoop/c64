@@ -127,6 +127,8 @@ public final class C64: CPUBus {
     var typeQueue: [UInt8] = []
     /// C128 mode (MMU, 128K, C128 ROMs) when set; see `setC128`.
     var c128: C128Memory?
+    /// Called on the emulation thread when the program switched the machine (GO64).
+    public var onModelChanged: (() -> Void)?
     /// KERNAL keyboard buffer and its length (C64: $0277/$C6, C128: $034A/$D0).
     var keyBuffer: Int { c128 == nil ? 0x277 : 0x34A }
     var keyCount: Int { c128 == nil ? 0xC6 : 0xD0 }
@@ -198,7 +200,10 @@ public final class C64: CPUBus {
     /// Runs one full video frame.
     public func runFrame() {
         let start = vic.frameCount
-        while vic.frameCount == start { cpu.step() }
+        while vic.frameCount == start {
+            cpu.step()
+            if c128 != nil { checkGo64() }
+        }
         feedTypeQueue()
         processKeyEvents()
     }
@@ -206,7 +211,10 @@ public final class C64: CPUBus {
     /// Runs at least the given number of CPU cycles.
     public func run(cycles n: Int) {
         let end = cycles + UInt64(n)
-        while cycles < end { cpu.step() }
+        while cycles < end {
+            cpu.step()
+            if c128 != nil { checkGo64() }
+        }
     }
 
     @inline(__always) func clock() {

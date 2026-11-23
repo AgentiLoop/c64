@@ -51,4 +51,16 @@ final class C128Tests: XCTestCase {
         c64.poke(0xFF00, 0)
         XCTAssertEqual(c64.peek(0xD50B), 0x20)    // MMU version: 128K
     }
+
+    func testGO64SwitchesToC64() throws {
+        let c64 = try makeMachine()
+        var changed = false
+        c64.onModelChanged = { changed = true }
+        for _ in 0..<300 { c64.runFrame() }
+        c64.queueTyping("GO64\nY\n")
+        for _ in 0..<300 { c64.runFrame() }
+        XCTAssertTrue(changed)
+        XCTAssertFalse(c64.isC128)
+        XCTAssertTrue(screen(c64).contains("38911 BASIC BYTES FREE"), screen(c64))
+    }
 }
