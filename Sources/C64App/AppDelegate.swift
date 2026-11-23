@@ -895,7 +895,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         let drive1571Item = mi("C64 Drive 8 Is a 1571", #selector(toggleC64Drive1571(_:)))
         drive1571Item.state = UserDefaults.standard.bool(forKey: "C64Drive1571") ? .on : .off
-        let boot80Item = mi("C128 Starts in 80 Columns (40/80 Key Down)", #selector(toggleBoot80(_:)))
+        let boot80Item = mi("C128 Starts in 80 Columns", #selector(toggleBoot80(_:)))
         boot80Item.state = UserDefaults.standard.bool(forKey: "C128Boot80") ? .on : .off
         add("Machine", [
             modelItems[0],
