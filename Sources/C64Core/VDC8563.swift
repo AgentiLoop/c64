@@ -55,6 +55,8 @@ public final class VDC8563 {
     public private(set) var picture: [UInt32] = [UInt32](repeating: 0xFF000000, count: 640 * 200)
     public private(set) var pictureWidth = 640
     public private(set) var pictureHeight = 200
+    /// Advances only when a complete picture (both fields in interlace) is ready.
+    public private(set) var pictureCount: UInt64 = 0
     var drawWidth = 640, drawHeight = 200
 
     /// RGBI colours of the 8563, 0xAARRGGBB.
@@ -226,6 +228,7 @@ public final class VDC8563 {
             picture = drawBuffer
             pictureWidth = drawWidth
             pictureHeight = drawHeight
+            pictureCount &+= 1
         }
         frameCount += 1
         field = interlaced ? frameCount & 1 : 0
