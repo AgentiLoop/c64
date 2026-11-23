@@ -33,6 +33,18 @@ public final class CIA6526 {
     // Serial data register
     var sdr: UInt8 = 0
     var sdrShiftCount = 0
+    /// Serial port output: called with the byte when it has been shifted out (8 bits on SP/CNT).
+    /// Used for the C128 fast serial (burst) bus between the host and 1571/1581 drives.
+    public var onSerialOut: ((UInt8) -> Void)?
+    /// True while the serial port is an input (CRA bit 6 = 0).
+    public var serialIsInput: Bool { cra & 0x40 == 0 }
+
+    /// A byte arrived on SP/CNT from outside (only taken while the port is an input).
+    public func receiveSerial(_ byte: UInt8) {
+        guard serialIsInput else { return }
+        sdr = byte
+        setInterrupt(0x08)
+    }
 
     // Time of day (BCD)
     var todTenths: UInt8 = 0, todSec: UInt8 = 0, todMin: UInt8 = 0, todHr: UInt8 = 1
@@ -89,7 +101,7 @@ public final class CIA6526 {
             pb6Toggle.toggle()
             if cra & 0x40 != 0 && sdrShiftCount > 0 {
                 sdrShiftCount -= 1
-                if sdrShiftCount == 0 { setInterrupt(0x08) }
+                if sdrShiftCount == 0 { setInterrupt(0x08); onSerialOut?(sdr) }
             }
         }
         if crb & 0x01 != 0 {

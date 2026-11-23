@@ -223,4 +223,34 @@ final class C128Tests: XCTestCase {
         XCTAssertEqual(frame[8 * w + 5], white)
         XCTAssertNotEqual(frame[8 * w + 6], white)
     }
+
+    /// C128 + 1581: the KERNAL detects the fast drive and LOAD uses the fast serial (burst) bus
+    /// (CIA serial registers on SRQ/DATA) instead of the bit-banged slow protocol.
+    func testFastSerialLoadFrom1581() throws {
+        guard let roms = ROMSet.load(), let c128 = roms.c128, roms.drive1581 != nil else {
+            throw XCTSkip("C128 or 1581 ROMs not installed")
+        }
+        let payload = (0..<12000).map { UInt8(truncatingIfNeeded: $0 &* 13 &+ 5) }
+        let d = D81Image.blank(name: "FAST", id: "81")
+        XCTAssertTrue(d.addFile(name: "DATA", contents: [0x00, 0x30] + payload))   // loads at $3000
+        let c64 = C64(roms: roms)
+        c64.setC128(c128)
+        XCTAssertNotNil(c64.attach1581())
+        c64.drive9!.insert(d)
+        var fastBytes = 0
+        let host = c64.iec.hostFastSerialIn
+        c64.iec.hostFastSerialIn = { b in fastBytes += 1; host?(b) }
+        for _ in 0..<300 { c64.runFrame() }
+        c64.queueTyping("BLOAD\"DATA\",U9,B0\n")
+        var frames = 0
+        for f in 0..<6000 {
+            c64.runFrame()
+            let s = screen(c64)
+            if s.components(separatedBy: "READY.").count > 2 { frames = f; break }
+        }
+        let loaded = Array(c64.ram[0x3000..<0x3000 + payload.count])
+        XCTAssertEqual(loaded, payload, screen(c64))
+        XCTAssertGreaterThan(fastBytes, payload.count, "loaded over the slow bus (\(fastBytes) fast bytes)")
+        print("1581 fast load: \(payload.count) bytes in \(frames) frames, \(fastBytes) fast serial bytes")
+    }
 }

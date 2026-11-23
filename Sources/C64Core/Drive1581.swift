@@ -1,6 +1,6 @@
 /// True Commodore 1581 emulation: a 2 MHz 6502 running the original DOS ROM, an 8520 CIA
 /// (serial bus, LEDs, motor, side select), a WD1772 controller and an 80-track 3.5" disk.
-public final class Drive1581: CPUBus, IECDevice {
+public final class Drive1581: CPUBus, FastSerialDevice {
     public private(set) var cpu: CPU6502!
     public let cia = CIA6526()
     public let wd = WD1772()
@@ -43,6 +43,9 @@ public final class Drive1581: CPUBus, IECDevice {
             if self.writeProtected { v &= ~0x40 }
             if self.atnAsserted { v |= 0x80 }
             return v
+        }
+        cia.onSerialOut = { [unowned self] byte in
+            if self.fastSerialOut { self.iec.driveSentFast(byte) }
         }
         wd.hasDisk = { [unowned self] in self.image != nil }
         wd.spinning = { [unowned self] in self.motorOn }
@@ -95,6 +98,13 @@ public final class Drive1581: CPUBus, IECDevice {
         let out = portBDriven
         // ATN acknowledge: unlike the 1541, PB4 = 1 arms the automatic ATN response.
         return out & 0x02 != 0 || ((out & 0x10 != 0) == atnAsserted)
+    }
+
+    /// PB5 = fast serial direction (1 = the drive drives SP/CNT).
+    var fastSerialOut: Bool { portBDriven & 0x20 != 0 }
+
+    public func fastSerialIn(_ byte: UInt8) {
+        if !fastSerialOut { cia.receiveSerial(byte) }
     }
 
     public func atnChanged(_ asserted: Bool) {

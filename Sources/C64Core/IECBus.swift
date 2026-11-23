@@ -7,7 +7,23 @@ public protocol IECDevice: AnyObject {
     func atnChanged(_ asserted: Bool)
 }
 
+/// A drive with a fast serial port (1571/1581): bytes arrive through its CIA's serial register.
+public protocol FastSerialDevice: IECDevice {
+    func fastSerialIn(_ byte: UInt8)
+}
+
 public final class IECBus {
+    /// The C128's side of the fast serial line (nil on a C64, which has no fast serial).
+    var hostFastSerialIn: ((UInt8) -> Void)?
+
+    /// A byte shifted out by the host (C128 CIA1 with FSDIR = output) goes to every fast drive.
+    func hostSentFast(_ byte: UInt8) {
+        for d in devices { (d as? FastSerialDevice)?.fastSerialIn(byte) }
+    }
+
+    /// A byte shifted out by a drive goes to the C128 (if it is listening).
+    func driveSentFast(_ byte: UInt8) { hostFastSerialIn?(byte) }
+
     public private(set) var c64Atn = false
     public private(set) var c64Clock = false
     public private(set) var c64Data = false

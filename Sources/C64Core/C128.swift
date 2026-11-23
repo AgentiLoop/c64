@@ -140,15 +140,33 @@ extension C64 {
     /// Commodore 128 (C128 mode) when its ROMs are given, the C64 when nil. Resets the machine.
     public func setC128(_ roms: C128ROMs?) {
         c128 = roms.map(C128Memory.init)
+        wireFastSerial()
         reset()
     }
 
     public var isC128: Bool { c128 != nil }
 
+    /// C128 fast serial: CIA1's serial port is connected to the bus (SP = DATA, CNT = SRQ), its
+    /// direction set by MMU $D505 bit 3 (FSDIR, 1 = output). The C64 has no such connection.
+    func wireFastSerial() {
+        if let m = c128 {
+            cia1.onSerialOut = { [unowned self, unowned m] byte in
+                if m.mcr & 0x08 != 0 { self.iec.hostSentFast(byte) }
+            }
+            iec.hostFastSerialIn = { [unowned self, unowned m] byte in
+                if m.mcr & 0x08 == 0 { self.cia1.receiveSerial(byte) }
+            }
+        } else {
+            cia1.onSerialOut = nil
+            iec.hostFastSerialIn = nil
+        }
+    }
+
     /// Finishes a GO64: the C128 ROMs and MMU go away and the machine restarts as a C64.
     func checkGo64() {
         guard let m = c128, m.go64Requested else { return }
         c128 = nil
+        wireFastSerial()
         reset()
         onModelChanged?()
     }
