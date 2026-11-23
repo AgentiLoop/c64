@@ -44,6 +44,7 @@ public final class VICII {
     var displayState = false
     var badline = false
     var denLatch = false
+    var d011Written = false
     var verticalBorder = true
     var mainBorder = true
 
@@ -150,7 +151,7 @@ public final class VICII {
             rasterCompare = (rasterCompare & 0xFF) | (Int(value & 0x80) << 1)
             if old != rasterCompare { checkRasterIRQ() }
             if raster == 0x30 && den { denLatch = true }
-            updateBadline()
+            d011Written = true
         case 0x12:
             let old = rasterCompare
             rasterCompare = (rasterCompare & 0x100) | Int(value)
@@ -275,6 +276,9 @@ public final class VICII {
         if cycle >= 16 && cycle <= 55 { gAccess() }
         if badline && cycle >= 15 && cycle <= 54 && vmli < 40 { cAccess() }
         for n in 0..<8 where spriteCycle(n) == cycle { spriteFetchCycle(n) }
+        // The CPU writes in the second half of a cycle, after the VIC's own accesses: a new
+        // $D011 changes the badline condition from the next cycle on (DMA delay / VSP scrolling).
+        if d011Written { d011Written = false; updateBadline() }
 
         // Pixel output
         let line = raster - VICII.firstVisibleLine

@@ -45,6 +45,8 @@ public final class C64: CPUBus {
     var vicBank = 0
     var todCounter = 0
     var nmiLine = false
+    var irqSampled = false
+    var nmiSampled = false
 
     /// Keyboard matrix: keyMatrix[row] has bit `col` set while that key is held.
     /// Row = CIA1 port A bit, column = CIA1 port B bit.
@@ -228,6 +230,7 @@ public final class C64: CPUBus {
         swiftLink?.reset()
         c128?.reset()
         cpu.reset()
+        irqSampled = false; nmiSampled = false
         resetCycle = cycles
         typeQueue.removeAll()
     }
@@ -280,9 +283,13 @@ public final class C64: CPUBus {
             userPort?.tick(self)
             swiftLink?.tick(now: cycles)
         }
-        cpu.irqLine = vic.irq || cia1.irq
+        // The 6510 samples its interrupt inputs one cycle before an instruction ends, so a line
+        // that changes in this cycle is seen by the CPU one cycle later.
+        cpu.irqLine = irqSampled
+        irqSampled = vic.irq || cia1.irq
+        if nmiSampled { cpu.nmiPending = true; nmiSampled = false }
         let nmi = cia2.irq || restorePressed || (swiftLink?.irq ?? false)
-        if nmi && !nmiLine { cpu.nmiPending = true }
+        if nmi && !nmiLine { nmiSampled = true }
         nmiLine = nmi
     }
 
