@@ -28,9 +28,8 @@ final class EmulatorView: NSView {
     func refresh() {
         guard let runner = runner else { return }
         var is80 = false
-        let image: CGImage? = runner.withFrame { pixels, eighty in
+        let image: CGImage? = runner.withFrame { pixels, w, h, eighty in
             is80 = eighty
-            let w = eighty ? C64.vdcWidth : VICII.screenWidth, h = eighty ? C64.vdcHeight : VICII.screenHeight
             let data = pixels.withUnsafeBufferPointer { Data(buffer: $0) } as CFData
             guard let provider = CGDataProvider(data: data) else { return nil }
             return CGImage(width: w, height: h, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: w * 4,

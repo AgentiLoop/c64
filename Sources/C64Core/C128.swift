@@ -31,6 +31,7 @@ final class C128Memory {
     var go64Requested = false
     /// The 40/80 DISPLAY key (down = start in 80 columns).
     var key4080Down = false
+    var vdcPictureWidth = 640, vdcPictureHeight = 200
     /// 2 MHz mode (VIC-II register $D030 bit 0, BASIC's FAST): the CPU gets two cycles per VIC cycle.
     var fast = false
     var halfCycle = false

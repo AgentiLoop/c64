@@ -185,4 +185,42 @@ final class C128Tests: XCTestCase {
         XCTAssertTrue(s.contains("BOOTING AUTO"), s)
         XCTAssertTrue(s.contains("BOOT OK"), s)
     }
+
+    /// VDC character height (R9/R23) and smooth scrolling (R24 vertical, R25 horizontal).
+    func testVDCTallCharactersAndSmoothScroll() throws {
+        let c64 = try makeMachine()
+        c64.key4080Down = true
+        c64.reset()
+        for _ in 0..<300 { c64.runFrame() }
+        let m = c64.c128!
+        var frame: [UInt32] = []
+        c64.renderVDC(into: &frame)
+        XCTAssertEqual(c64.vdcPictureSize.width, 640)
+        XCTAssertEqual(c64.vdcPictureSize.height, 200)
+        // 16-line characters; screen code 1 gets a solid line 12.
+        m.vdcRegs[9] = 15; m.vdcRegs[23] = 15
+        let charset = Int(m.vdcRegs[28] & 0xE0) << 8
+        let screen = Int(m.vdcRegs[12]) << 8 | Int(m.vdcRegs[13])
+        let attrs = Int(m.vdcRegs[20]) << 8 | Int(m.vdcRegs[21])
+        m.vdcRAM[screen] = 1
+        m.vdcRAM[attrs] = 0x0F                                     // white, normal character set
+        for l in 0..<16 { m.vdcRAM[charset + 16 + l] = l == 12 ? 0xFF : 0 }
+        let white = C64.rgbi[15]
+        c64.renderVDC(into: &frame)
+        let w = c64.vdcPictureSize.width
+        XCTAssertEqual(c64.vdcPictureSize.height, Int(m.vdcRegs[6]) * 16)
+        XCTAssertEqual(frame[12 * w], white)
+        XCTAssertNotEqual(frame[11 * w], white)
+        // Vertical smooth scroll by 4 lines moves it up.
+        m.vdcRegs[24] = (m.vdcRegs[24] & 0xE0) | 4
+        c64.renderVDC(into: &frame)
+        XCTAssertEqual(frame[8 * w], white)
+        XCTAssertNotEqual(frame[12 * w], white)
+        // Horizontal: two less than the cell width - 1 moves it 2 pixels left.
+        let cellW = Int(m.vdcRegs[22] >> 4) + 1
+        m.vdcRegs[25] = (m.vdcRegs[25] & 0xF0) | UInt8(cellW - 3)
+        c64.renderVDC(into: &frame)
+        XCTAssertEqual(frame[8 * w + 5], white)
+        XCTAssertNotEqual(frame[8 * w + 6], white)
+    }
 }
