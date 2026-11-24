@@ -613,3 +613,17 @@ extension C128Tests {
         XCTAssertTrue(mfm.dirty)
     }
 }
+
+extension C128Tests {
+    /// Holding C= at power-on starts the C128 in C64 mode, as on the real machine.
+    func testCommodoreKeyAtPowerOnStartsC64Mode() throws {
+        let c64 = try makeMachine()
+        c64.setKey(.commodore, pressed: true)
+        c64.reset()
+        for _ in 0..<60 { c64.runFrame() }
+        c64.setKey(.commodore, pressed: false)
+        for _ in 0..<150 { c64.runFrame() }
+        XCTAssertFalse(c64.isC128)
+        XCTAssertTrue(screen(c64).contains("BASIC BYTES FREE"), screen(c64))
+    }
+}
