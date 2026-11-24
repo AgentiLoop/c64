@@ -231,7 +231,11 @@ public final class GCRDisk {
     /// Added to the track number in the sector headers: 35 for the second side of a D71.
     let trackOffset: Int
     /// The image the disk was made from; sectors that can't be decoded keep their old data.
-    let source: D64Image
+    public let source: D64Image
+    /// G64 only: odd half-tracks (key = half-track number 3, 5, … 83) that carry data.
+    public private(set) var halfTracks: [Int: [UInt8]] = [:]
+    /// Made from a G64 image: saved back as G64 (raw GCR, copy protection intact).
+    public let isG64: Bool
 
     static let encodeTable: [UInt8] = [0x0A, 0x0B, 0x12, 0x13, 0x0E, 0x0F, 0x16, 0x17,
                                        0x09, 0x19, 0x1A, 0x1B, 0x0D, 0x1D, 0x1E, 0x15]
@@ -259,8 +263,86 @@ public final class GCRDisk {
         trackCount = d64.tracks
         diskID = id ?? d64.diskID
         self.trackOffset = trackOffset
+        isG64 = false
         tracks = [[]]
         for t in 1...d64.tracks { tracks.append(encodeTrack(t, d64)) }
+    }
+
+    /// A G64 image: "GCR-1541", version, half-track count, max track size, then one offset and
+    /// one speed entry (4 bytes each) per half-track; each track is a 2-byte length and raw GCR.
+    public init?(g64 d: [UInt8]) {
+        guard d.count >= 12, d[0..<8].elementsEqual(Array("GCR-1541".utf8)) else { return nil }
+        let count = Int(d[9])
+        guard count > 0, d.count >= 12 + count * 8 else { return nil }
+        func u32(_ o: Int) -> Int { Int(d[o]) | Int(d[o + 1]) << 8 | Int(d[o + 2]) << 16 | Int(d[o + 3]) << 24 }
+        var full: [[UInt8]] = [[]]
+        var half: [Int: [UInt8]] = [:]
+        var lastTrack = 0
+        for i in 0..<count {
+            let off = u32(12 + i * 4)
+            var data: [UInt8] = []
+            if off > 0, off + 2 <= d.count {
+                let len = Int(d[off]) | Int(d[off + 1]) << 8
+                if len > 0, off + 2 + len <= d.count { data = Array(d[off + 2..<off + 2 + len]) }
+            }
+            let ht = i + 2
+            if ht & 1 == 0 {
+                full.append(data)
+                if !data.isEmpty { lastTrack = ht / 2 }
+            } else if !data.isEmpty {
+                half[ht] = data
+            }
+        }
+        guard lastTrack > 0 else { return nil }
+        trackCount = full.count - 1
+        tracks = full
+        halfTracks = half
+        isG64 = true
+        trackOffset = 0
+        // A D64 view for directory listings and boot-sector checks (tracks 1-35 decoded).
+        source = D64Image(tracks: 35)
+        diskID = (0, 0)
+        let decoded = toD64()
+        source.data = decoded.data
+    }
+
+    /// The raw GCR track under the head (`halfTrack` 2...84), or nil when it carries no data.
+    @inline(__always) public func track(half ht: Int) -> [UInt8]? {
+        if ht & 1 == 0 {
+            let t = ht >> 1
+            guard t <= trackCount, !tracks[t].isEmpty else { return nil }
+            return tracks[t]
+        }
+        return halfTracks[ht]
+    }
+
+    @inline(__always) public func write(halfTrack ht: Int, position: Int, _ value: UInt8) {
+        if ht & 1 == 0 { tracks[ht >> 1][position] = value } else { halfTracks[ht]?[position] = value }
+        dirty = true
+    }
+
+    /// Encodes the disk as a G64 file (84 half-tracks, speed zone from the track number).
+    public func toG64() -> [UInt8] {
+        let count = 84
+        let maxSize = max(7928, (tracks + Array(halfTracks.values)).map(\.count).max() ?? 0)
+        var header = Array("GCR-1541".utf8) + [0, UInt8(count), UInt8(maxSize & 0xFF), UInt8(maxSize >> 8)]
+        var offsets = [UInt8](), speeds = [UInt8](), body = [UInt8]()
+        let base = 12 + count * 8
+        func le32(_ v: Int) -> [UInt8] { [UInt8(v & 0xFF), UInt8(v >> 8 & 0xFF), UInt8(v >> 16 & 0xFF), UInt8(v >> 24 & 0xFF)] }
+        for i in 0..<count {
+            let ht = i + 2
+            let data = track(half: ht) ?? []
+            if data.isEmpty {
+                offsets += le32(0); speeds += le32(0)
+            } else {
+                offsets += le32(base + body.count)
+                speeds += le32(GCRDisk.zone(track: (ht + 1) / 2))
+                body += [UInt8(data.count & 0xFF), UInt8(data.count >> 8)] + data
+                body += [UInt8](repeating: 0, count: maxSize - data.count)
+            }
+        }
+        header += offsets + speeds
+        return header + body
     }
 
     static func encode(_ bytes: [UInt8]) -> [UInt8] {
@@ -330,9 +412,10 @@ public final class GCRDisk {
     public func toD64() -> D64Image {
         let out = D64Image(tracks: trackCount)
         out.data = source.data
-        for t in 1...trackCount {
+        for t in 1...min(trackCount, out.tracks) {
             let tr = tracks[t]
             let n = tr.count
+            guard n > 0 else { continue }
             var i = 0
             while i < n {
                 // End of a sync mark: an 0xFF followed by a non-0xFF byte.

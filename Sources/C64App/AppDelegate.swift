@@ -324,6 +324,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 C64Autostart.ensureBooted(c64)
                 c64.queueTyping(c64.isC128 && bootSector ? "BOOT\n" : "LOAD\"*\",8,1\nRUN\n")
             }
+        case "g64":
+            guard runner.c64.drive8 != nil, let gcr = GCRDisk(g64: bytes) else {
+                let alert = NSAlert()
+                alert.messageText = "Not a valid G64 image"
+                alert.informativeText = url.lastPathComponent
+                alert.runModal()
+                return
+            }
+            insertDisk(gcr, url: url)
+            let bootSector = gcr.source.sector(1, 0).prefix(3).elementsEqual([0x43, 0x42, 0x4D])
+            runner.perform { c64 in
+                C64Autostart.ensureBooted(c64)
+                c64.queueTyping(c64.isC128 && bootSector ? "BOOT\n" : "LOAD\"*\",8,1\nRUN\n")
+            }
         case "d71":
             guard runner.c64.drive8 != nil, let image = D71Image(data: bytes) else {
                 let alert = NSAlert()
@@ -677,18 +691,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// Writes changed sectors back to the D64 (or both sides to the D71) file.
     private func saveDiskIfNeeded() {
         guard let d = disk, d.dirty || (disk1?.dirty ?? false), let url = diskURL else { return }
-        var bytes = d.toD64().data
+        var bytes = d.isG64 ? d.toG64() : d.toD64().data
         if let d1 = disk1 { bytes += d1.toD64().data }
         do { try Data(bytes).write(to: url) } catch { NSLog("Saving disk failed: \(error)") }
     }
 
     @objc func attachDisk(_ sender: Any?) {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [UTType(filenameExtension: "d64")].compactMap { $0 }
+        panel.allowedContentTypes = ["d64", "g64"].compactMap { UTType(filenameExtension: $0) }
         guard panel.runModal() == .OK, let url = panel.url,
               let data = FileManager.default.contents(atPath: url.path),
-              let image = D64Image(data: [UInt8](data)) else { return }
-        insertDisk(GCRDisk(d64: image), url: url)
+              let gcr = url.pathExtension.lowercased() == "g64"
+                  ? GCRDisk(g64: [UInt8](data)) : D64Image(data: [UInt8](data)).map({ GCRDisk(d64: $0) })
+        else { return }
+        insertDisk(gcr, url: url)
         NSDocumentController.shared.noteNewRecentDocumentURL(url)
         baseTitle = url.lastPathComponent
         window.title = baseTitle

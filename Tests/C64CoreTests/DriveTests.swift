@@ -113,3 +113,34 @@ final class DriveTests: XCTestCase {
         XCTAssertEqual(Array(c64.ram[0x9000..<0x9000 + payload.count]), payload)
     }
 }
+
+extension DriveTests {
+    /// G64: a D64 encoded to raw GCR and back keeps its sectors and half-tracks, and the true
+    /// drive loads a program from it.
+    func testG64RoundTripAndLoad() throws {
+        let d = D64Image.blank(name: "G64 DISK", id: "64")
+        d.addFile(name: "HELLO", contents: DriveTests.helloPRG("G64 OK"))
+        let g64 = GCRDisk(d64: d).toG64()
+        XCTAssertEqual(Array(g64[0..<8]), Array("GCR-1541".utf8))
+        var g = try XCTUnwrap(GCRDisk(g64: g64))
+        XCTAssertTrue(g.isG64)
+        XCTAssertEqual(g.toD64().data, d.data)
+        // A half-track survives a save/load cycle.
+        var raw = g64
+        let half = 12 + 34 * 4 + 4                        // offset entry of half-track 37 (18.5)
+        let extra = [UInt8](repeating: 0x52, count: 100)
+        let off = raw.count
+        raw += [100, 0] + extra
+        raw[half] = UInt8(off & 0xFF); raw[half + 1] = UInt8(off >> 8 & 0xFF); raw[half + 2] = UInt8(off >> 16)
+        g = try XCTUnwrap(GCRDisk(g64: raw))
+        XCTAssertEqual(g.track(half: 37), extra)
+        XCTAssertEqual(GCRDisk(g64: g.toG64())?.track(half: 37), extra)
+
+        let c64 = try makeMachine()
+        c64.fastLoad = false
+        c64.drive8!.insert(try XCTUnwrap(GCRDisk(g64: g64)))
+        _ = run(c64, "LOAD\"HELLO\",8")
+        let screen = run(c64, "RUN", frames: 200)
+        XCTAssertTrue(screen.contains("G64 OK"), screen)
+    }
+}

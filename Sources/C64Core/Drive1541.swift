@@ -176,13 +176,12 @@ public final class Drive1541: CPUBus, FastSerialDevice {
         let zone = Int(via2.portBOutput >> 5) & 3
         guard byteTimer >= 32 - 2 * zone else { return }
         byteTimer = 0
-        guard let d = side1 ? disk1 : disk, halfTrack & 1 == 0, track <= d.trackCount else { sync = false; return }
-        let tr = d.tracks[track]
+        guard let d = side1 ? disk1 : disk, let tr = d.track(half: halfTrack) else { sync = false; return }
         let n = tr.count
         headPos = (headPos + 1) % n
         if !via2.cb2High {
             // Write mode: the byte in VIA2 port A goes onto the disk.
-            if !d.writeProtected { d.write(track: track, position: headPos, via2.ora) }
+            if !d.writeProtected { d.write(halfTrack: halfTrack, position: headPos, via2.ora) }
             sync = false
             byteReady()
         } else {
