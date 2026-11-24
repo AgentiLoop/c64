@@ -158,3 +158,45 @@ extension DriveTests {
         XCTAssertEqual(k4.data[((3 * 2 + 1) * 10 + 2) * 512], 7)
     }
 }
+
+extension DriveTests {
+    func testActivityClassification() {
+        XCTAssertEqual(DiskActivity.classify(command: "S0:GAME", headWriting: false), .deleting)
+        XCTAssertEqual(DiskActivity.classify(command: "SCRATCH:GAME", headWriting: false), .deleting)
+        XCTAssertEqual(DiskActivity.classify(command: "N0:DISK,01", headWriting: false), .formatting)
+        XCTAssertEqual(DiskActivity.classify(command: "N:DISK", headWriting: false), .erasing)
+        XCTAssertEqual(DiskActivity.classify(command: "LOG,S,A", headWriting: false), .appending)
+        XCTAssertEqual(DiskActivity.classify(command: "LOG,S,W", headWriting: false), .writing)
+        XCTAssertEqual(DiskActivity.classify(command: "@0:PROG", headWriting: false), .writing)
+        XCTAssertEqual(DiskActivity.classify(command: "PROG", headWriting: true), .writing)
+        XCTAssertEqual(DiskActivity.classify(command: "SCORES", headWriting: false), .reading)
+        XCTAssertEqual(DiskActivity.classify(command: "NAME", headWriting: false), .reading)
+    }
+
+    /// The light's activity follows the commands the true-emulated drives actually receive.
+    func testDriveReportsActivity() throws {
+        guard let roms = ROMSet.load(), roms.drive1581 != nil else { throw XCTSkip("ROMs not installed") }
+        let c64 = C64(roms: roms)
+        c64.fastLoad = false
+        c64.drive8!.insert(GCRDisk(d64: D64Image.blank(name: "T", id: "01")))
+        c64.attach1581()?.insert(D81Image.blank(name: "T", id: "01"))
+        for _ in 0..<150 { c64.runFrame() }
+        func seen(_ dev: Int, _ line: String) -> Set<DiskActivity> {
+            c64.queueTyping("CLOSE1:CLOSE15:" + line + "\n")
+            var s = Set<DiskActivity>()
+            for _ in 0..<500 {
+                c64.runFrame()
+                s.insert(dev == 8 ? c64.drive8!.activity : c64.drive9!.activity)
+            }
+            return s
+        }
+        for dev in [8, 9] {
+            XCTAssertTrue(seen(dev, "OPEN1,\(dev),2,\"LOG,S,W\":PRINT#1,\"A\":CLOSE1").contains(.writing), "\(dev) write")
+            XCTAssertTrue(seen(dev, "OPEN1,\(dev),2,\"LOG,S,A\":PRINT#1,\"B\":CLOSE1").contains(.appending), "\(dev) append")
+            XCTAssertTrue(seen(dev, "OPEN1,\(dev),2,\"LOG,S,R\":GET#1,A$:CLOSE1").contains(.reading), "\(dev) read")
+            XCTAssertTrue(seen(dev, "OPEN15,\(dev),15,\"S0:LOG\":CLOSE15").contains(.deleting), "\(dev) delete")
+            XCTAssertTrue(seen(dev, "OPEN15,\(dev),15,\"N0:EMPTY\":CLOSE15").contains(.erasing), "\(dev) erase")
+        }
+        XCTAssertTrue(seen(8, "OPEN15,8,15,\"N0:NEW,02\":CLOSE15").contains(.formatting))
+    }
+}

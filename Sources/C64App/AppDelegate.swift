@@ -32,12 +32,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// FPS / refresh-rate readout in the right corner of the title bar.
     let fpsLabel = NSTextField(labelWithString: "")
     let fpsAccessory = NSTitlebarAccessoryViewController()
-    /// Drive activity light at the left of the title bar: green while a drive's LED is on, gray otherwise.
+    /// Drive activity light at the left of the title bar, coloured by what the drive is doing.
     let ledDot = NSView(frame: NSRect(x: 6, y: 8, width: 12, height: 12))
     let ledAccessory = NSTitlebarAccessoryViewController()
     var fpsStart = 0.0, fpsEmulated = 0
     var statusTimer: Timer?
-    var lastLED = false
+    var lastActivity = DiskActivity.idle
     var lastTape = false
     /// The TAP file in the Datasette (recordings are written back to it).
     var tapeURL: URL?
@@ -123,6 +123,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         ledDot.wantsLayer = true
         ledDot.layer?.cornerRadius = 6
         ledDot.layer?.backgroundColor = NSColor.systemGray.cgColor
+        ledDot.toolTip = "Drive idle"
         let ledBox = NSView(frame: NSRect(x: 0, y: 0, width: 24, height: 28))
         ledBox.addSubview(ledDot)
         ledAccessory.view = ledBox
@@ -181,7 +182,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     // MARK: - Frame tick (main thread)
 
     private func frameTick() {
-        let led = (runner.c64.drive8?.ledOn ?? false) || (runner.c64.drive9?.ledOn ?? false)
+        // The more telling of the two drives' activities (anything beats plain reading or idle).
+        let a8 = runner.c64.drive8?.activity ?? .idle, a9 = runner.c64.drive9?.activity ?? .idle
+        let activity = [.idle, .reading].contains(a8) && a9 != .idle ? a9 : a8
         let tape = runner.c64.datasette.mode != .stopped && runner.c64.cassetteMotor
         let now = ProcessInfo.processInfo.systemUptime
         if now - fpsStart >= 1 {
@@ -196,11 +199,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             fpsText = text
             fpsLabel.stringValue = text
         }
-        if led != lastLED || tape != lastTape {
-            lastLED = led
+        if activity != lastActivity || tape != lastTape {
+            lastActivity = activity
             lastTape = tape
-            ledDot.layer?.backgroundColor = (led ? NSColor.systemGreen : NSColor.systemGray).cgColor
+            let (color, help) = AppDelegate.lightStyle(activity)
+            ledDot.layer?.backgroundColor = color.cgColor
+            ledDot.toolTip = help
             window.title = (tape ? "▶ " : "") + baseTitle
+        }
+    }
+
+    /// Activity light colours: green read, orange write, yellow append, red delete (scratch),
+    /// purple format (new disk with ID), pink erase (new without ID: clears the directory), gray idle.
+    static func lightStyle(_ a: DiskActivity) -> (NSColor, String) {
+        switch a {
+        case .idle: return (.systemGray, "Drive idle")
+        case .reading: return (.systemGreen, "Reading")
+        case .writing: return (.systemOrange, "Writing a file")
+        case .appending: return (.systemYellow, "Appending to a file")
+        case .deleting: return (.systemRed, "Deleting a file")
+        case .formatting: return (.systemPurple, "Formatting the disk")
+        case .erasing: return (.systemPink, "Erasing the disk")
         }
     }
 

@@ -88,6 +88,12 @@ public final class Drive1581: CPUBus, FastSerialDevice {
     }
 
     public var ledOn: Bool { cia.pra & cia.ddra & 0x40 != 0 }
+    var sniffer = CommandSniffer()
+    /// What the drive is doing (for the activity light): idle unless the LED is on.
+    public var activity: DiskActivity {
+        guard ledOn else { return .idle }
+        return DiskActivity.classify(command: sniffer.command, headWriting: wd.isWriting)
+    }
     public var motorOn: Bool { cia.ddra & 0x04 != 0 && cia.pra & 0x04 == 0 }
 
     // MARK: - IEC
@@ -148,7 +154,9 @@ public final class Drive1581: CPUBus, FastSerialDevice {
     public func write(_ address: UInt16, _ value: UInt8) {
         let a = Int(address)
         switch a {
-        case 0..<0x2000: ram[a] = value
+        case 0..<0x2000:
+            ram[a] = value
+            sniffer.ramWrite(a, value)
         case 0x4000..<0x6000: cia.write(a, value)
         case 0x6000..<0x8000: wd.write(a, value)
         default: break

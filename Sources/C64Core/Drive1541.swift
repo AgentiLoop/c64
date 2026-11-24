@@ -129,6 +129,13 @@ public final class Drive1541: CPUBus, FastSerialDevice {
     }
 
     public var ledOn: Bool { via2.portBOutput & 0x08 != 0 }
+    var sniffer = CommandSniffer()
+    /// What the drive is doing (for the activity light): idle unless the LED is on.
+    public var activity: DiskActivity {
+        guard ledOn else { return .idle }
+        let headWriting = mfm == nil ? !via2.cb2High && motorOn : wd.isWriting
+        return DiskActivity.classify(command: sniffer.command, headWriting: headWriting)
+    }
     public var motorOn: Bool { via2.portBOutput & 0x04 != 0 }
     public var track: Int { halfTrack / 2 }
     /// 1571 head 1 selected (VIA1 PA2).
@@ -264,7 +271,9 @@ public final class Drive1541: CPUBus, FastSerialDevice {
     public func write(_ address: UInt16, _ value: UInt8) {
         let a = Int(address)
         switch a {
-        case 0..<0x1800: ram[a & 0x7FF] = value
+        case 0..<0x1800:
+            ram[a & 0x7FF] = value
+            sniffer.ramWrite(a & 0x7FF, value)
         case 0x1800..<0x1C00: via1.write(a, value)
         case 0x1C00..<0x2000:
             via2.write(a, value)

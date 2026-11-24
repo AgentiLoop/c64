@@ -43,6 +43,9 @@ public final class WD1772 {
 
     public init() {}
 
+    /// A write sector / write track command is in progress.
+    public var isWriting: Bool { busy && (phase == .writing || phase == .writeTrack) }
+
     public func reset() {
         busy = false; drq = false; phase = .idle; typeI = true
         seekError = false; rnf = false; lostData = false; writeProtectFault = false
