@@ -84,6 +84,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             c64.setC128(c128)
             c64.key4080Down = UserDefaults.standard.bool(forKey: "C128Boot80")
         }
+        // Option held while the app starts = C= held at power-on: a C128 starts in C64 mode.
+        let optionAtLaunch = NSEvent.modifierFlags.contains(.option)
+        if optionAtLaunch && c64.isC128 { c64.setKey(.commodore, pressed: true) }
         updateModelItems(c128: c64.isC128)
         c64.onModelChanged = { [weak self] in   // GO64 typed on the C128
             DispatchQueue.main.async { self?.updateModelItems(c128: false) }
@@ -153,6 +156,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         observeControllers()
         audio.start()
         runner.start()
+        if optionAtLaunch {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                self?.runner.perform { $0.setKey(.commodore, pressed: false) }
+            }
+        }
         if let url = pendingOpen { pendingOpen = nil; open(url: url) }
         NSApp.activate(ignoringOtherApps: true)
     }
