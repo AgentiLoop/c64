@@ -66,7 +66,7 @@
   /* ---- Hero: a C64 screen whose border flashes tape-loader raster bars (three.js shader) ---- */
   .hero { position: relative; min-height: min(92vh, 780px); display: grid; place-items: center;
           padding: clamp(28px, 7vw, 84px) clamp(16px, 6vw, 96px); overflow: hidden;
-          background: repeating-linear-gradient(#6c5eb5 0 14px, #352879 14px 22px, #959595 22px 30px, #70a4b2 30px 40px); }
+          background: repeating-linear-gradient(#444 0 6px, #959595 6px 12px, #fff 12px 16px, #959595 16px 22px, #444 22px 28px, #000 28px 68px); }
   .hero canvas#bars { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
   .hero-screen { position: relative; z-index: 1; width: min(980px, 100%); background: var(--c64-blue);
                  padding: clamp(24px, 4vw, 48px); display: grid; grid-template-columns: auto 1fr; gap: 12px 40px;
@@ -246,40 +246,40 @@ if (renderer) {
                "6f4f25","433900","9a6759","444444","6c6c6c","9ad284","6c5eb5","959595"];
   const uniforms = {
     time: { value: 0 }, res: { value: new THREE.Vector2() },
-    pal: { value: hex.map(h => new THREE.Color("#" + h).convertSRGBToLinear()) }
+    pal: { value: hex.map(h => new THREE.Vector3(parseInt(h.slice(0, 2), 16) / 255, parseInt(h.slice(2, 4), 16) / 255, parseInt(h.slice(4), 16) / 255)) }   // exact sRGB, written straight out
   };
   const material = new THREE.ShaderMaterial({ uniforms, vertexShader: `
     void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }`, fragmentShader: `
     uniform float time; uniform vec2 res; uniform vec3 pal[16];
     vec3 c64(int i) { vec3 c = pal[0]; for (int k = 0; k < 16; k++) if (k == i) c = pal[k]; return c; }
+    // Classic C64 raster bars: flat colour per raster line, no blending. Each bar is a symmetric
+    // ramp of the palette (2 raster lines per step), so it looks rounded/metallic.
+    vec3 grayBar(int i) {            // 11 dark grey, 12 grey, 15 light grey, 1 white
+      int k = i < 7 ? i : 13 - i;
+      return c64(k < 2 ? 11 : k < 4 ? 12 : k < 6 ? 15 : 1);
+    }
+    vec3 blueBar(int i) {            // 6 blue, 14 light blue, 3 cyan, 1 white
+      int k = i < 7 ? i : 13 - i;
+      return c64(k < 2 ? 6 : k < 4 ? 14 : k < 6 ? 3 : 1);
+    }
     void main() {
       float px = max(2.0, floor(res.y / 270.0));                 // one C64 raster line per block
-      vec2 p = floor(gl_FragCoord.xy / px);
-      float y = p.y;
-      // Loader stripes: bands of random width that race up the border, plus a slow sine wobble.
-      float speed = 46.0;
-      float band = floor((y + time * speed + 18.0 * sin(y * 0.021 + time * 0.7)) / 5.5);
-      float r = fract(sin(band * 12.9898) * 43758.5453);
-      // Blues, whites and greys only; about a third of the bands are gaps (dark background).
-      int pick = int(floor(r * 10.0));
-      int idx = pick < 1 ? 6 : pick < 2 ? 14 : pick < 3 ? 3 : pick < 4 ? 1 : pick < 5 ? 11 : pick < 6 ? 12 : pick < 7 ? 15 : -1;
-      bool stripe = idx >= 0;
-      vec3 col = stripe ? c64(idx) : c64(6) * 0.22;
-      // One metallic raster bar sweeping up and down: in front of the stripes on the way up,
-      // behind them on the way down (then it only shows through the gaps).
-      float phase = time * 0.9;
-      float centre = res.y / px * (0.5 + 0.42 * sin(phase));
+      float lines = floor(res.y / px);
+      float y = floor(gl_FragCoord.y / px);
+      vec3 col = c64(0);                                         // black between the bars
+      // The lines: grey bars, 14 raster lines tall, every 34 lines, standing still.
+      float m = mod(y, 34.0);
+      bool onLine = m < 14.0;
+      if (onLine) col = grayBar(int(m));
+      // The beam: one blue bar on a sine. Going up it passes in front of the grey bars,
+      // going down behind them (then it shows only in the black gaps).
+      float phase = time * 0.8;
+      float centre = floor(lines * (0.5 + 0.44 * sin(phase)));
+      float i = y - (centre - 7.0);
       bool front = cos(phase) > 0.0;
-      float d = abs(y - centre) / 10.0;
-      if (d < 1.0 && (front || !stripe)) {
-        vec3 bar = mix(c64(14), c64(1), 1.0 - d) * (1.3 - 0.5 * d);
-        col = mix(col, bar, 0.9 * (1.0 - d * d));
-      }
-      col *= 0.82 + 0.18 * step(0.5, fract(gl_FragCoord.y / px * 0.5));   // scanlines
-      vec2 uv = gl_FragCoord.xy / res - 0.5;
-      col *= 1.0 - dot(uv, uv) * 0.6;                                       // vignette
+      if (i >= 0.0 && i < 14.0 && (front || !onLine)) col = blueBar(int(i));
+      col *= 0.9 + 0.1 * step(0.5, fract(gl_FragCoord.y / px * 0.5));     // faint scanlines
       gl_FragColor = vec4(col, 1.0);
-      #include <colorspace_fragment>
     }` });
   scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material));
   const hero = canvas.parentElement;
