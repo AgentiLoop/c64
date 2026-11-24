@@ -10,7 +10,7 @@ extension C64 {
         set {
             if newValue {
                 cpu.trapAddresses.insert(C64.kernalLoadEntry)
-                cpu.trap = { [unowned self] cpu in self.trapLoad(cpu) }
+                cpu.trap = { [unowned(unsafe) self] cpu in self.trapLoad(cpu) }
             } else {
                 cpu.trapAddresses.remove(C64.kernalLoadEntry)
             }

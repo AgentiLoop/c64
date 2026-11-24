@@ -113,10 +113,10 @@ extension C64 {
     /// direction set by MMU $D505 bit 3 (FSDIR, 1 = output). The C64 has no such connection.
     func wireFastSerial() {
         if let m = c128 {
-            cia1.onSerialOut = { [unowned self, unowned m] byte in
+            cia1.onSerialOut = { [unowned(unsafe) self, unowned(unsafe) m] byte in
                 if m.mcr & 0x08 != 0 { self.iec.hostSentFast(byte) }
             }
-            iec.hostFastSerialIn = { [unowned self, unowned m] byte in
+            iec.hostFastSerialIn = { [unowned(unsafe) self, unowned(unsafe) m] byte in
                 if m.mcr & 0x08 == 0 { self.cia1.receiveSerial(byte) }
             }
         } else {

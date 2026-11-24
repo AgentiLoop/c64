@@ -6,7 +6,7 @@ public final class Drive1581: CPUBus, FastSerialDevice {
     public let wd = WD1772()
     var ram = [UInt8](repeating: 0, count: 0x2000)
     let rom: [UInt8]
-    unowned let iec: IECBus
+    unowned(unsafe) let iec: IECBus
     public let deviceNumber: Int
 
     public private(set) var image: D81Image?
@@ -28,7 +28,7 @@ public final class Drive1581: CPUBus, FastSerialDevice {
         self.iec = iec
         self.deviceNumber = deviceNumber
         cpu = CPU6502(bus: self)
-        cia.portAIn = { [unowned self] in
+        cia.portAIn = { [unowned(unsafe) self] in
             var v: UInt8 = 0xFF
             if self.image != nil { v &= ~0x02 }                    // /READY
             v &= ~0x18
@@ -36,7 +36,7 @@ public final class Drive1581: CPUBus, FastSerialDevice {
             if self.diskChanged { v &= ~0x80 }                      // /DISK CHANGE
             return v
         }
-        cia.portBIn = { [unowned self] in
+        cia.portBIn = { [unowned(unsafe) self] in
             var v: UInt8 = 0x7A
             if !self.iec.dataLine { v |= 0x01 }
             if !self.iec.clockLine { v |= 0x04 }
@@ -44,20 +44,20 @@ public final class Drive1581: CPUBus, FastSerialDevice {
             if self.atnAsserted { v |= 0x80 }
             return v
         }
-        cia.onSerialOut = { [unowned self] byte in
+        cia.onSerialOut = { [unowned(unsafe) self] byte in
             if self.fastSerialOut { self.iec.driveSentFast(byte) }
         }
-        wd.hasDisk = { [unowned self] in self.image != nil }
-        wd.spinning = { [unowned self] in self.motorOn }
-        wd.writeProtected = { [unowned self] in self.writeProtected }
-        wd.side = { [unowned self] in Drive1581.sideIndex(Int(self.cia.pra & self.cia.ddra & 1)) }
-        wd.stepped = { [unowned self] in if self.image != nil { self.diskChanged = false } }
-        wd.readSector = { [unowned self] cyl, side, n in
+        wd.hasDisk = { [unowned(unsafe) self] in self.image != nil }
+        wd.spinning = { [unowned(unsafe) self] in self.motorOn }
+        wd.writeProtected = { [unowned(unsafe) self] in self.writeProtected }
+        wd.side = { [unowned(unsafe) self] in Drive1581.sideIndex(Int(self.cia.pra & self.cia.ddra & 1)) }
+        wd.stepped = { [unowned(unsafe) self] in if self.image != nil { self.diskChanged = false } }
+        wd.readSector = { [unowned(unsafe) self] cyl, side, n in
             guard let img = self.image, cyl < 80, (1...10).contains(n) else { return nil }
             let s = side * 20 + (n - 1) * 2
             return img.sector(cyl + 1, s) + img.sector(cyl + 1, s + 1)
         }
-        wd.writeSector = { [unowned self] cyl, side, n, data in
+        wd.writeSector = { [unowned(unsafe) self] cyl, side, n, data in
             guard let img = self.image, cyl < 80, (1...10).contains(n), data.count == 512 else { return }
             let s = side * 20 + (n - 1) * 2
             img.setSector(cyl + 1, s, Array(data[0..<256]))

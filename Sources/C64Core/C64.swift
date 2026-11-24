@@ -201,29 +201,29 @@ public final class C64: CPUBus {
     }
 
     private func wire() {
-        vic.memRead = { [unowned self] a in
+        vic.memRead = { [unowned(unsafe) self] a in
             let addr = Int(a)
             if let m = self.c128 { return self.vicRead128(m, addr) }
             if vicBank & 1 == 0 && addr & 0x3000 == 0x1000 { return self.chargen[addr & 0x0FFF] }
             return self.ram[vicBank << 14 | addr]
         }
-        vic.colorRead = { [unowned self] o in self.colorRAM[o & 0x3FF] }
-        vic.onStandardChange = { [unowned self] in self.retuneClocks(); self.todCounter = 0 }
-        cia1.portAIn = { [unowned self] in self.keyboardPortA() }
-        cia1.portBIn = { [unowned self] in self.keyboardPortB() }
-        cia2.portAChanged = { [unowned self] in
+        vic.colorRead = { [unowned(unsafe) self] o in self.colorRAM[o & 0x3FF] }
+        vic.onStandardChange = { [unowned(unsafe) self] in self.retuneClocks(); self.todCounter = 0 }
+        cia1.portAIn = { [unowned(unsafe) self] in self.keyboardPortA() }
+        cia1.portBIn = { [unowned(unsafe) self] in self.keyboardPortB() }
+        cia2.portAChanged = { [unowned(unsafe) self] in
             let pa = self.cia2.portAOutput
             self.vicBank = Int(3 - (pa & 3))
             self.iec.setC64Lines(atn: pa & 0x08 != 0, clock: pa & 0x10 != 0, data: pa & 0x20 != 0)
             self.userPort?.setTXD(pa & 0x04 != 0, cycle: self.cycles)
         }
-        cia2.portAIn = { [unowned self] in
+        cia2.portAIn = { [unowned(unsafe) self] in
             var v: UInt8 = 0x3F
             if self.iec.clockLine { v |= 0x40 }
             if self.iec.dataLine { v |= 0x80 }
             return v
         }
-        cia2.portBIn = { [unowned self] in self.userPort?.portB ?? 0xFF }
+        cia2.portBIn = { [unowned(unsafe) self] in self.userPort?.portB ?? 0xFF }
     }
 
     public func reset() {

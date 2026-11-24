@@ -27,7 +27,7 @@ public final class CPU6502 {
     public var trap: ((CPU6502) -> Bool)?
     public var trapAddresses = Set<UInt16>()
 
-    unowned let bus: CPUBus
+    unowned(unsafe) let bus: CPUBus
     private var pollI: Bool?
 
     public init(bus: CPUBus) { self.bus = bus }

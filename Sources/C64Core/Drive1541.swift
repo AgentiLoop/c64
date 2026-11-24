@@ -11,7 +11,7 @@ public final class Drive1541: CPUBus, FastSerialDevice {
     public let via2 = VIA6522()
     var ram = [UInt8](repeating: 0, count: 0x800)
     let rom: [UInt8]
-    unowned let iec: IECBus
+    unowned(unsafe) let iec: IECBus
 
     public private(set) var disk: GCRDisk?
     /// The 1571's second side (tracks 36–70 of a D71).
@@ -45,22 +45,22 @@ public final class Drive1541: CPUBus, FastSerialDevice {
         is1571 = rom.count == 0x8000
         cpu = CPU6502(bus: self)
         if is1571 {
-            via1.portAIn = { [unowned self] in
+            via1.portAIn = { [unowned(unsafe) self] in
                 (self.byteReadyLevel ? 0 : 0x80) | 0x7E | (self.halfTrack == 2 ? 0 : 1)
             }
-            cia.onSerialOut = { [unowned self] byte in
+            cia.onSerialOut = { [unowned(unsafe) self] byte in
                 if self.fastSerialOut { self.iec.driveSentFast(byte) }
             }
         }
-        via1.portBIn = { [unowned self] in
+        via1.portBIn = { [unowned(unsafe) self] in
             var v: UInt8 = 0x00          // bits 5/6 = 0: device number 8
             if !self.iec.dataLine { v |= 0x01 }
             if !self.iec.clockLine { v |= 0x04 }
             if self.atnAsserted { v |= 0x80 }
             return v
         }
-        via2.portAIn = { [unowned self] in self.readLatch }
-        via2.portBIn = { [unowned self] in
+        via2.portAIn = { [unowned(unsafe) self] in self.readLatch }
+        via2.portBIn = { [unowned(unsafe) self] in
             var v: UInt8 = self.sync ? 0x00 : 0x80
             let protected = self.diskChangeCycles > 0 ? (self.diskChangeCycles / 100_000) & 1 == 0
                                                       : (self.disk?.writeProtected ?? false)
@@ -76,6 +76,7 @@ public final class Drive1541: CPUBus, FastSerialDevice {
         cia.reset()
         byteReadyLevel = false
         cpu.reset()
+        wake()
     }
 
     // MARK: - Media
@@ -84,6 +85,7 @@ public final class Drive1541: CPUBus, FastSerialDevice {
         disk = d
         disk1 = side1
         diskChangeCycles = 400_000
+        wake()
     }
 
     @discardableResult
@@ -92,6 +94,7 @@ public final class Drive1541: CPUBus, FastSerialDevice {
         disk = nil
         disk1 = nil
         diskChangeCycles = 200_000
+        wake()
         return d
     }
 
@@ -127,10 +130,28 @@ public final class Drive1541: CPUBus, FastSerialDevice {
 
     /// Called once per C64 cycle (985 248 Hz); runs the drive at its own 1 MHz (1571: 1 or 2 MHz).
     @inline(__always) public func clockC64Cycle() {
+        if iec.activity != seenActivity { seenActivity = iec.activity; wake() }
+        if asleep { return }
         clockAcc += twoMHz ? 2_000_000 : 1_000_000
         while clockAcc >= hostClock { clockAcc -= hostClock; cycleDebt += 1 }
         while cycleDebt > 0 { cpu.step() }
+        if motorOn || ledOn || cpu.pc < (is1571 ? 0x8000 : 0xC000) {
+            idleCycles = 0
+        } else {
+            idleCycles += 1
+            if idleCycles >= Drive1541.sleepAfter { asleep = true }
+        }
     }
+
+    /// Asleep: the drive has been idling in its ROM with motor and LED off and no host bus activity
+    /// for about two seconds, so its CPU isn't run (it would only spin in the idle loop). Host bus
+    /// activity (ATN, clock, data, fast serial), a disk change or a reset wakes it.
+    public private(set) var asleep = false
+    private var idleCycles = 0
+    private var seenActivity = 0
+    static let sleepAfter = 2_000_000
+
+    private func wake() { asleep = false; idleCycles = 0 }
 
     @inline(__always) private func tick() {
         via1.tick()

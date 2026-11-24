@@ -18,6 +18,7 @@ public final class IECBus {
 
     /// A byte shifted out by the host (C128 CIA1 with FSDIR = output) goes to every fast drive.
     func hostSentFast(_ byte: UInt8) {
+        activity &+= 1
         for d in devices { (d as? FastSerialDevice)?.fastSerialIn(byte) }
     }
 
@@ -28,6 +29,8 @@ public final class IECBus {
     public private(set) var c64Clock = false
     public private(set) var c64Data = false
     public var devices: [IECDevice] = []
+    /// Bumped whenever the host changes a line or sends a fast-serial byte (wakes sleeping drives).
+    public private(set) var activity = 0
 
     public init() {}
 
@@ -38,6 +41,7 @@ public final class IECBus {
     /// Arguments are the CIA2 output bits (1 = pull the line low, the C64 uses inverters).
     func setC64Lines(atn: Bool, clock: Bool, data: Bool) {
         let atnChanged = atn != c64Atn
+        if atnChanged || clock != c64Clock || data != c64Data { activity &+= 1 }
         c64Atn = atn; c64Clock = clock; c64Data = data
         if atnChanged { for d in devices { d.atnChanged(atn) } }
     }

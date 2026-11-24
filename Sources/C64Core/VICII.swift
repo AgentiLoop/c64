@@ -22,7 +22,14 @@ public final class VICII {
         0xFF8E5029, 0xFF553800, 0xFFC46C71, 0xFF4A4A4A, 0xFF7B7B7B, 0xFFA9FF9F, 0xFF706DEB, 0xFFB2B2B2,
     ]
 
-    public var frameBuffer = [UInt32](repeating: 0xFF000000, count: screenWidth * screenHeight)
+    /// The picture being drawn, in fixed storage so the per-pixel writes skip array copy-on-write checks.
+    private let pixels: UnsafeMutablePointer<UInt32> = {
+        let p = UnsafeMutablePointer<UInt32>.allocate(capacity: screenWidth * screenHeight)
+        p.initialize(repeating: 0xFF000000, count: screenWidth * screenHeight)
+        return p
+    }()
+    /// A copy of the current picture (384×272, 0xAARRGGBB).
+    public var frameBuffer: [UInt32] { Array(UnsafeBufferPointer(start: pixels, count: VICII.screenWidth * VICII.screenHeight)) }
     public var frameCount = 0
     public var onFrame: (() -> Void)?
 
@@ -131,6 +138,7 @@ public final class VICII {
     }
 
     public init() {}
+    deinit { pixels.deallocate() }
 
     /// Switches between the PAL 6569 (63 cycles × 312 lines) and NTSC 6567R8 (65 × 263).
     public func setStandard(_ s: VideoStandard) {
@@ -398,7 +406,7 @@ public final class VICII {
         let firstUnused = linesPerFrame - VICII.firstVisibleLine
         guard firstUnused < VICII.screenHeight else { return }
         let color = VICII.palette[Int(regs[0x20] & 0x0F)]
-        for i in firstUnused * VICII.screenWidth..<VICII.screenHeight * VICII.screenWidth { frameBuffer[i] = color }
+        for i in firstUnused * VICII.screenWidth..<VICII.screenHeight * VICII.screenWidth { pixels[i] = color }
     }
 
     private func checkSpriteDMAStart() {
@@ -537,7 +545,7 @@ public final class VICII {
             }
 
             if mainBorder || verticalBorder { color = borderColor }
-            frameBuffer[rowBase + p] = color
+            pixels[rowBase + p] = color
         }
     }
 }

@@ -69,6 +69,23 @@ final class DriveTests: XCTestCase {
         XCTAssertTrue(screen.contains("DISK OK"), screen)
     }
 
+    /// An idle drive stops running its CPU; the C64 talking on the bus wakes it, so a LOAD after a
+    /// long idle still works, and after the load the drive goes back to sleep.
+    func testIdleDriveSleepsAndWakes() throws {
+        let c64 = try makeMachine()
+        c64.fastLoad = false
+        let d = D64Image.blank(name: "SLEEPY", id: "42")
+        d.addFile(name: "HELLO", contents: DriveTests.helloPRG("AWAKE"))
+        c64.drive8!.insert(GCRDisk(d64: d))
+        for _ in 0..<300 { c64.runFrame() }
+        XCTAssertTrue(c64.drive8!.asleep)
+        _ = run(c64, "LOAD\"HELLO\",8")
+        let screen = run(c64, "RUN", frames: 200)
+        XCTAssertTrue(screen.contains("AWAKE"), screen)
+        for _ in 0..<300 { c64.runFrame() }
+        XCTAssertTrue(c64.drive8!.asleep)
+    }
+
     func testSaveToDisk() throws {
         let c64 = try makeMachine()
         let disk = GCRDisk(d64: D64Image.blank(name: "SAVE TEST", id: "01"))

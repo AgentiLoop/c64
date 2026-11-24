@@ -120,7 +120,9 @@ public final class SID {
         }
     }
 
-    let voices = [Voice(), Voice(), Voice()]
+    // Three separate references: the per-cycle code then doesn't retain an array element every cycle.
+    private let v0 = Voice(), v1 = Voice(), v2 = Voice()
+    var voices: [Voice] { [v0, v1, v2] }
     var filterCutoff: UInt32 = 0
     var filterResonance: UInt8 = 0
     var filterRouting: UInt8 = 0
@@ -202,7 +204,6 @@ public final class SID {
 
     /// One PHI2 cycle.
     @inline(__always) public func tick() {
-        let v0 = voices[0], v1 = voices[1], v2 = voices[2]
         v0.clockOscillator(); v1.clockOscillator(); v2.clockOscillator()
         // Hard sync: voice n is reset when voice n-1's MSB rises.
         if v0.sync && v2.msbRising { v0.acc = 0 }
@@ -237,9 +238,9 @@ public final class SID {
     }
 
     private func mix() -> Float {
-        let o0 = voiceOut(voices[0], voices[2])
-        let o1 = voiceOut(voices[1], voices[0])
-        let o2 = voiceOut(voices[2], voices[1])
+        let o0 = voiceOut(v0, v2)
+        let o1 = voiceOut(v1, v0)
+        let o2 = voiceOut(v2, v1)
         var filtIn: Float = 0, direct: Float = 0
         if filterRouting & 1 != 0 { filtIn += o0 } else { direct += o0 }
         if filterRouting & 2 != 0 { filtIn += o1 } else { direct += o1 }

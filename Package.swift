@@ -12,7 +12,9 @@ let package = Package(
         .package(url: "https://github.com/AgentiLoop/AutoUpdateKit.git", from: "1.0.2"),
     ],
     targets: [
-        .target(name: "C64Core"),
+        // The chips touch each other's state every emulated cycle; runtime exclusivity checks
+        // (swift_beginAccess) cost about as much as the emulation itself, so they're off here.
+        .target(name: "C64Core", swiftSettings: [.unsafeFlags(["-enforce-exclusivity=unchecked", "-Ounchecked"])]),
         .executableTarget(
             name: "C64App",
             dependencies: ["C64Core", .product(name: "AutoUpdateKit", package: "AutoUpdateKit")]
