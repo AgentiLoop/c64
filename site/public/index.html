@@ -292,8 +292,8 @@ if (renderer) {
       // The beam: one blue bar on a sine. Going up it passes in front of the grey bars,
       // going down behind them (then it shows only in the black gaps).
       float phase = time * 0.8;
-      float sw = sin(phase);                     // swing: 2 lines short of the original at top and bottom
-      float centre = floor(lines * 0.5 + (lines * 0.44 - 2.0) * sw);
+      float sw = sin(phase);                     // swing: 3 lines short of the original at top and bottom
+      float centre = floor(lines * 0.5 + (lines * 0.44 - 3.0) * sw);
       float i = y - (centre - 7.0);
       bool front = cos(phase) > 0.0;
       if (i >= 0.0 && i < 14.0 && (front || !onLine)) col = blueBar(int(i));
