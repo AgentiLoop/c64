@@ -4,7 +4,7 @@ import Foundation
 /// CPU and draws each raster line as the beam reaches it, so register changes take effect on the
 /// line they happen, the way programs rely on.
 ///
-/// Behaviour follows VICE's vdc.c / vdc-mem.c / vdc-draw.c:
+/// What is modelled:
 /// - geometry from the registers: R0 total characters per line, R1 displayed characters, R4 total
 ///   rows, R5 vertical fine adjust, R6 displayed rows, R9 lines per character row, R22 character
 ///   width (double-pixel mode R25 bit 4: R22 high nibble pixels of 2 dots, otherwise high nibble + 1
@@ -16,7 +16,7 @@ import Foundation
 /// - display enable begin/end (R34/R35): the picture is blanked while R34 lies past R0;
 /// - the address increment per row (R27), character set address and 16K/64K addressing (R28);
 /// - interlace sync and video (R8 = 3): fields alternate and fill the odd/even picture lines;
-/// - the status register: busy after memory accesses and block copy/fill (R30), with VICE's timings,
+/// - the status register: busy after memory accesses and block copy/fill (R30) for as long as the chip takes,
 ///   and the vertical blank flag while the beam is outside the displayed rows.
 ///
 /// RAM: 64 KB (4464 chips, as in the C128DCR). In 16K addressing mode (R28 bit 4 = 0) addresses are
@@ -84,7 +84,7 @@ public final class VDC8563 {
 
     public func reset() {
         regs = [UInt8](repeating: 0, count: 64)
-        // Power-on values VICE uses (the KERNAL programs all of them anyway).
+        // Register values at power-on; the KERNAL reprograms all of them during init anyway.
         regs[0] = 126; regs[1] = 80; regs[4] = 38; regs[6] = 25; regs[9] = 7; regs[22] = 0x78; regs[23] = 8
         regs[25] = 0x47; regs[26] = 0xF0; regs[28] = 0x20; regs[34] = 0x7D; regs[35] = 0x64
         select = 0
@@ -100,7 +100,7 @@ public final class VDC8563 {
     @inline(__always) func phys(_ address: Int) -> Int {
         let a = address & 0xFFFF
         if regs[28] & 0x10 != 0 { return a }
-        // 16K addressing on 4464 (64K) chips: VICE vdc_16k_to_64k_map.
+        // 16K mode on 64K (4464) chips: A8-A13 move up one bit to A9-A14 and A8 also stays put.
         return (a & 0x80FF) | ((a & 0x3F00) << 1) | (a & 0x0100)
     }
 
@@ -275,7 +275,7 @@ public final class VDC8563 {
 
     // MARK: - Drawing
 
-    /// Pixels displayed per character and semigraphics, as VICE's calculate_draw_masks().
+    /// How many pixels of each character cell the current R22 shows, and how semigraphics fills the gap.
     private func cellShape() -> (shown: Int, semiTest: UInt8, semiGap: Bool, gapPixels: Int) {
         let r22 = regs[22], r25 = regs[25]
         let i = Int(doublePixel && r22 & 0x08 == 0 && r22 >= 0x10 ? r22 - 0x10 : r22)
@@ -302,7 +302,7 @@ public final class VDC8563 {
         guard y < drawHeight else { return }
         let w = drawWidth
         let base = y * w
-        // Display enable (R34 begin, R35 end), as VICE: when the character counter (0...R0) never
+        // Display enable window (R34 begin, R35 end): when the character counter (0...R0) never
         // reaches R34 the line stays blanked. Programs set R34 past R0 to hide the screen while
         // they set up a new one.
         if (regs[34] > regs[0] && regs[35] <= regs[0]) || (regs[34] == regs[35] && regs[35] <= regs[0]) {
@@ -327,7 +327,7 @@ public final class VDC8563 {
         let cursorOn = cursorMode == 0 || (cursorMode >= 2 && (frameCount / (cursorMode == 2 ? 16 : 32)) & 1 == 0)
         let cursorStart = Int(regs[10] & 0x1F), cursorEnd = Int(regs[11] & 0x1F)
         let reverseScreen = regs[24] & 0x40 != 0
-        // Horizontal smooth scroll, as VICE's draw offset: positive moves the picture right.
+        // Horizontal smooth scroll: R25 low nibble relative to the cell width in R22; positive moves the picture right.
         let xOffset = (doublePixel ? 2 : 0) + (Int(regs[25] & 0x0F) - Int(regs[22] >> 4)) * px
         let fg0 = Int(regs[26] >> 4), bg0 = Int(regs[26] & 0x0F)
         let cols = Int(regs[1])
@@ -398,7 +398,7 @@ public final class VDC8563 {
         }
     }
 
-    /// VICE's vdc-draw.c tables: pixels displayed per character for R22, and whether semigraphics
+    /// Indexed by R22: pixels shown per character, and whether semigraphics
     /// extends into the inter-character gap.
     static let displayedWidth: [Int] = [
         0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,

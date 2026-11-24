@@ -21,6 +21,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var disk: GCRDisk?
     /// Second side of a D71 in drive 8 (1571); saved back together with `disk`.
     var disk1: GCRDisk?
+    /// An MFM (CP/M) disk in the 1571 on drive 8, written back to `diskURL` when changed.
+    var mfmDisk: MFMImage?
     /// The D81 file in drive 9 (1581) and its image.
     var disk9URL: URL?
     var disk9: D81Image?
@@ -289,7 +291,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc func openDocument(_ sender: Any?) {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = ["prg", "p00", "d64", "d71", "d81", "g64", "t64", "tap", "crt"]
+        panel.allowedContentTypes = ["prg", "p00", "d64", "d71", "d81", "g64", "img", "t64", "tap", "crt"]
             .compactMap { UTType(filenameExtension: $0) }
         panel.allowsOtherFileTypes = true
         guard panel.runModal() == .OK, let url = panel.url else { return }
@@ -338,6 +340,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 C64Autostart.ensureBooted(c64)
                 c64.queueTyping(c64.isC128 && bootSector ? "BOOT\n" : "LOAD\"*\",8,1\nRUN\n")
             }
+        case "img", "ima":
+            guard runner.c64.drive8?.is1571 == true else {
+                let alert = NSAlert()
+                alert.messageText = "MFM disks need a 1571"
+                alert.informativeText = "Use Machine ▸ Commodore 128 (or C64 Drive 8 Is a 1571) with the 1571 ROM."
+                alert.runModal()
+                return
+            }
+            guard let image = MFMImage(data: bytes) else {
+                let alert = NSAlert()
+                alert.messageText = "Unknown MFM disk format"
+                alert.informativeText = "\(url.lastPathComponent): raw 40-track images of 160, 180, 200, 320, 360 or 400 KB " +
+                    "(IBM-8/9, Kaypro II/IV) are supported."
+                alert.runModal()
+                return
+            }
+            saveDiskIfNeeded()
+            disk = nil; disk1 = nil
+            mfmDisk = image
+            diskURL = url
+            runner.perform { $0.drive8?.insert(mfm: image) }
         case "d71":
             guard runner.c64.drive8 != nil, let image = D71Image(data: bytes) else {
                 let alert = NSAlert()
@@ -682,6 +705,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func insertDisk(_ d: GCRDisk, side1: GCRDisk? = nil, url: URL?) {
         saveDiskIfNeeded()
+        mfmDisk = nil
         disk = d
         disk1 = side1
         diskURL = url
@@ -690,6 +714,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     /// Writes changed sectors back to the D64 (or both sides to the D71) file.
     private func saveDiskIfNeeded() {
+        if let m = mfmDisk, m.dirty, let url = diskURL {
+            do { try Data(m.data).write(to: url) } catch { NSLog("Saving MFM disk failed: \(error)") }
+            return
+        }
         guard let d = disk, d.dirty || (disk1?.dirty ?? false), let url = diskURL else { return }
         var bytes = d.isG64 ? d.toG64() : d.toD64().data
         if let d1 = disk1 { bytes += d1.toD64().data }
@@ -714,6 +742,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         saveDiskIfNeeded()
         disk = nil
         disk1 = nil
+        mfmDisk = nil
         diskURL = nil
         runner.perform { _ = $0.drive8?.eject() }
         baseTitle = runner.c64.isC128 ? "C128" : "C64"

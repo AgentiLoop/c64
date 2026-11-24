@@ -4,8 +4,8 @@ import Foundation
 /// with the modem plugged into its serial port. SwiftLink runs the 6551 from a 3.6864 MHz crystal,
 /// so every rate in the control register is doubled (19200 → 38,400). Turbo232 adds an enhanced
 /// speed register at $DE07 for 57,600 / 115,200 / 230,400 (used when the control register asks
-/// for the external clock). Register behaviour follows VICE's ACIA emulation; like VICE on a C64,
-/// "no carrier" is reported in the DSR bit (the cartridge swaps DCD and DSR).
+/// for the external clock). Register behaviour follows the 6551 datasheet. The cartridge wires DCD
+/// and DSR the other way round, so "no carrier" shows up in the DSR bit.
 ///
 /// Emulator-only flow control: a byte is only handed to the C64 when the previous one has been
 /// read (and RTS is asserted), and no sooner than `minReadGap` cycles after that read, so the NMI

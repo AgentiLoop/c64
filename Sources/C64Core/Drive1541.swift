@@ -4,7 +4,7 @@
 /// Given the 32 KB 1571 ROM it is a 1571: the same hardware plus a 6526 CIA for the fast serial
 /// (burst) bus at $4000, a second head (side select on VIA1 PA2), a 1/2 MHz switch (PA5), the fast
 /// serial direction (PA1), the track 0 sensor (PA0) and BYTE READY on PA7, and the WD1770 MFM
-/// controller at $2000 (the DOS probes it to tell MFM from GCR disks; no MFM disk is present yet).
+/// controller at $2000 for MFM disks (`insert(mfm:)`, the CP/M formats).
 public final class Drive1541: CPUBus, FastSerialDevice {
     public private(set) var cpu: CPU6502<Drive1541>!
     public let via1 = VIA6522()
@@ -16,14 +16,16 @@ public final class Drive1541: CPUBus, FastSerialDevice {
     public private(set) var disk: GCRDisk?
     /// The 1571's second side (tracks 36–70 of a D71).
     public private(set) var disk1: GCRDisk?
+    /// 1571: an MFM disk (CP/M formats) read and written through the WD1770.
+    public private(set) var mfm: MFMImage?
     /// True for a 1571 (32 KB ROM).
     public let is1571: Bool
     /// The 1571's CIA (fast serial port); unused on a 1541.
     public let cia = CIA6526()
     /// The 1571's WD1770 floppy controller (MFM disks); unused on a 1541.
     public let wd = WD1772()
-    /// BYTE READY as seen on the 1571's VIA1 PA7: set when a byte is complete, cleared when VIA2
-    /// port A or B is accessed (as in VICE's via2d.c).
+    /// BYTE READY as seen on the 1571's VIA1 PA7: set when a byte is complete, cleared again by any
+    /// access to VIA2 port A or B.
     var byteReadyLevel = false
     var halfSpeed = false
     public private(set) var halfTrack = 36
@@ -55,6 +57,18 @@ public final class Drive1541: CPUBus, FastSerialDevice {
             }
             wd.spinning = { [unowned(unsafe) self] in self.motorOn }
             wd.side = { [unowned(unsafe) self] in self.side1 ? 1 : 0 }
+            wd.hasDisk = { [unowned(unsafe) self] in self.mfm != nil }
+            wd.writeProtected = { [unowned(unsafe) self] in self.mfm?.writeProtected ?? false }
+            // The DOS counts MFM cylinders from track 2 of its stepper (found by running its MFM code).
+            wd.physicalCylinder = { [unowned(unsafe) self] in max(0, self.track - 2) }
+            wd.layout = { [unowned(unsafe) self] _, side in
+                guard let m = self.mfm, side < m.geometry.sides else { return (1, 0, 2) }
+                return (m.firstSector(side: side), m.geometry.sectors, m.geometry.sizeCode)
+            }
+            wd.readSector = { [unowned(unsafe) self] cyl, side, n in self.mfm?.sector(cyl: cyl, side: side, sector: n) }
+            wd.writeSector = { [unowned(unsafe) self] cyl, side, n, data in
+                self.mfm?.setSector(cyl: cyl, side: side, sector: n, data)
+            }
         }
         via1.portBIn = { [unowned(unsafe) self] in
             var v: UInt8 = 0x00          // bits 5/6 = 0: device number 8
@@ -67,7 +81,7 @@ public final class Drive1541: CPUBus, FastSerialDevice {
         via2.portBIn = { [unowned(unsafe) self] in
             var v: UInt8 = self.sync ? 0x00 : 0x80
             let protected = self.diskChangeCycles > 0 ? (self.diskChangeCycles / 100_000) & 1 == 0
-                                                      : (self.disk?.writeProtected ?? false)
+                                                      : (self.disk?.writeProtected ?? self.mfm?.writeProtected ?? false)
             if !protected { v |= 0x10 }
             return v
         }
@@ -89,6 +103,16 @@ public final class Drive1541: CPUBus, FastSerialDevice {
     public func insert(_ d: GCRDisk, side1: GCRDisk? = nil) {
         disk = d
         disk1 = side1
+        mfm = nil
+        diskChangeCycles = 400_000
+        wake()
+    }
+
+    /// Inserts an MFM disk (1571 only; the GCR head then finds no sync marks).
+    public func insert(mfm m: MFMImage) {
+        disk = nil
+        disk1 = nil
+        mfm = m
         diskChangeCycles = 400_000
         wake()
     }
@@ -98,6 +122,7 @@ public final class Drive1541: CPUBus, FastSerialDevice {
         let d = disk
         disk = nil
         disk1 = nil
+        mfm = nil
         diskChangeCycles = 200_000
         wake()
         return d

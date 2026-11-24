@@ -236,7 +236,7 @@ extension C64 {
         if bank == 0 { ram[addr] = v } else { m.ram1[addr] = v }
     }
 
-    // MARK: - Z80 bus (as in VICE's z80mem.c)
+    // MARK: - Z80 bus
 
     /// Z80 memory: in bank 0 the boot BIOS (KERNAL ROM $D000–$DFFF) at $0000–$0FFF, colour RAM at
     /// $1000–$13FF while I/O is on, RAM (never I/O or character ROM) at $D000–$DFFF, otherwise the
@@ -308,8 +308,8 @@ extension C64 {
     }
 
     /// What the VIC-II sees: the RAM bank chosen in the MMU's RAM configuration register, and the
-    /// character ROM at $1000 in VIC banks 0 and 2 while port bit 2 is LOW (the opposite of the C64,
-    /// as in VICE's c128mem.c). The US ROM's lower 4K (with CAPS LOCK up) is the standard set.
+    /// character ROM at $1000 in VIC banks 0 and 2 while port bit 2 is LOW,
+    /// the opposite polarity to the C64. The US ROM's lower 4K (with CAPS LOCK up) is the standard set.
     func vicRead128(_ m: C128Memory, _ addr: Int) -> UInt8 {
         if !charen && vicBank & 1 == 0 && addr & 0x3000 == 0x1000 { return m.chargen[addr & 0x0FFF] }
         let full = vicBank << 14 | addr

@@ -51,6 +51,8 @@ final class KeyMapper {
         103: Press(keys: [.alt], shift: nil),         // F11 = ALT
         111: Press(keys: [.lineFeed], shift: nil),    // F12 = LINE FEED
         105: Press(keys: [.noScroll], shift: nil),    // F13 = NO SCROLL
+        119: Press(keys: [.left128], shift: nil),     // End = C128 ← (top row; CP/M disk-format choice)
+        121: Press(keys: [.right128], shift: nil),    // Page Down = C128 →
     ]
 
     static func pressFor(character ch: Character) -> Press? {

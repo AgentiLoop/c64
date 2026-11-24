@@ -144,3 +144,17 @@ extension DriveTests {
         XCTAssertTrue(screen.contains("G64 OK"), screen)
     }
 }
+
+extension DriveTests {
+    func testMFMImageGeometry() {
+        XCTAssertEqual(MFMImage(data: [UInt8](repeating: 0, count: 204_800))?.geometry.name, "Kaypro II")
+        XCTAssertEqual(MFMImage(data: [UInt8](repeating: 0, count: 409_600))?.geometry.name, "Kaypro IV")
+        XCTAssertEqual(MFMImage(data: [UInt8](repeating: 0, count: 368_640))?.geometry.name, "IBM-9 DS")
+        XCTAssertNil(MFMImage(data: [UInt8](repeating: 0, count: 1000)))
+        let k4 = MFMImage(geometry: MFMImage.formats[1])
+        k4.setSector(cyl: 3, side: 1, sector: 12, [7, 8, 9])
+        XCTAssertEqual(k4.sector(cyl: 3, side: 1, sector: 12)?.prefix(3), [7, 8, 9])
+        XCTAssertNil(k4.sector(cyl: 3, side: 1, sector: 2))                  // side 1 numbers 10-19
+        XCTAssertEqual(k4.data[((3 * 2 + 1) * 10 + 2) * 512], 7)
+    }
+}

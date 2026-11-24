@@ -541,3 +541,75 @@ extension C128Tests {
         print(s)
     }
 }
+
+extension C128Tests {
+    /// Types on the CP/M keyboard (lower-case letters, digits not needed).
+    func typeCPM(_ c64: C64, _ text: String) {
+        let letters: [C64Key] = [.a, .b, .c, .d, .e, .f, .g, .h, .i, .j, .k, .l, .m, .n, .o, .p, .q, .r, .s, .t, .u, .v, .w, .x, .y, .z]
+        for ch in text {
+            let k: C64Key
+            switch ch {
+            case "\r": k = .ret
+            case " ": k = .space
+            case ".": k = .period
+            case "=": k = .equals
+            default: k = letters[Int(ch.asciiValue! - 97)]
+            }
+            c64.setKey(k, pressed: true)
+            for _ in 0..<4 { c64.runFrame() }
+            c64.setKey(k, pressed: false)
+            for _ in 0..<4 { c64.runFrame() }
+        }
+    }
+
+    func pressKey(_ c64: C64, _ k: C64Key) {
+        c64.setKey(k, pressed: true)
+        for _ in 0..<4 { c64.runFrame() }
+        c64.setKey(k, pressed: false)
+        for _ in 0..<30 { c64.runFrame() }
+    }
+
+    /// MFM on the 1571: after booting CP/M from GCR, a Kaypro II disk (WD1770, 10 × 512-byte
+    /// sectors) is inserted; CP/M asks for the format, lists, types and renames a file on it.
+    func testCPMReadsAndWritesMFMDisk() throws {
+        guard let path = ProcessInfo.processInfo.environment["C128_CPM_D64"],
+              let data = FileManager.default.contents(atPath: path),
+              let image = D64Image(data: [UInt8](data)) else { throw XCTSkip("C128_CPM_D64 not set") }
+        guard let roms = ROMSet.load(), let c128 = roms.c128, roms.drive1571 != nil else { throw XCTSkip("ROMs") }
+        let c64 = C64(roms: roms)
+        c64.setC128(c128)
+        c64.drive8!.insert(GCRDisk(d64: image))
+        c64.reset()
+        for _ in 0..<1500 where !cpmScreen(c64).contains("A>") { c64.runFrame() }
+
+        // Kaypro II: 1K blocks, one system track; directory at cylinder 1 sector 0, block 2 = sector 4.
+        let mfm = MFMImage(geometry: MFMImage.formats[0])
+        var dir = [UInt8](repeating: 0xE5, count: 512)
+        let entry: [UInt8] = [0] + Array("HELLO   TXT".utf8) + [0, 0, 0, 1, 2] + [UInt8](repeating: 0, count: 15)
+        dir.replaceSubrange(0..<32, with: entry)
+        var file = Array("MFM WORKS\r\n".utf8)
+        file += [UInt8](repeating: 0x1A, count: 512 - file.count)
+        mfm.setSector(cyl: 1, side: 0, sector: 0, dir)
+        mfm.setSector(cyl: 1, side: 0, sector: 4, file)
+        c64.drive8!.insert(mfm: mfm)
+
+        c64.setKey(.control, pressed: true); typeCPM(c64, "c"); c64.setKey(.control, pressed: false)
+        for _ in 0..<200 { c64.runFrame() }
+        typeCPM(c64, "dir\r")
+        for _ in 0..<300 { c64.runFrame() }
+        // Kaypro II and IV look alike: pick II on the status line.
+        for _ in 0..<6 where !cpmScreen(c64).contains("KayPro II ") { pressKey(c64, .right128) }
+        XCTAssertTrue(cpmScreen(c64).contains("KayPro II "), cpmScreen(c64))
+        pressKey(c64, .ret)
+        for _ in 0..<600 { c64.runFrame() }
+        XCTAssertTrue(cpmScreen(c64).contains("A: HELLO    TXT"), cpmScreen(c64))
+        typeCPM(c64, "type hello.txt\r")
+        for _ in 0..<600 { c64.runFrame() }
+        XCTAssertTrue(cpmScreen(c64).contains("MFM WORKS"), cpmScreen(c64))
+        typeCPM(c64, "ren bye.txt=hello.txt\r")
+        for _ in 0..<600 { c64.runFrame() }
+        let renamed = mfm.sector(cyl: 1, side: 0, sector: 0)!
+        XCTAssertEqual(String(decoding: renamed[1..<12], as: UTF8.self), "BYE     TXT", cpmScreen(c64))
+        XCTAssertTrue(mfm.dirty)
+    }
+}

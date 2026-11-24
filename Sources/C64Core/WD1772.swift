@@ -33,6 +33,13 @@ public final class WD1772 {
     public var writeSector: (_ cyl: Int, _ side: Int, _ sector: Int, _ data: [UInt8]) -> Void = { _, _, _, _ in }
     /// Called when the head steps (clears the drive's disk-change latch).
     public var stepped: () -> Void = {}
+    /// Where the head really is, when the drive moves it itself (the 1571 steps with its VIA, the
+    /// WD1770's step outputs are not connected). nil: the controller's own STEP/SEEK position.
+    public var physicalCylinder: (() -> Int)?
+    /// Sector IDs on a track: first sector number, sectors per track, size code (2 = 512 bytes).
+    public var layout: (_ cyl: Int, _ side: Int) -> (first: Int, count: Int, sizeCode: Int) = { _, _ in (1, 10, 2) }
+    @inline(__always) var headCylinder: Int { physicalCylinder?() ?? cylinder }
+    var writeSize = 512
 
     public init() {}
 
@@ -49,7 +56,7 @@ public final class WD1772 {
             if writeProtected() { s |= 0x40 }
             if spunUp { s |= 0x20 }
             if seekError { s |= 0x10 }
-            if cylinder == 0 { s |= 0x04 }
+            if headCylinder == 0 { s |= 0x04 }
             if spinning() && hasDisk() && revCycle < 8000 { s |= 0x02 }
         } else {
             if writeProtectFault { s |= 0x40 }
@@ -132,9 +139,12 @@ public final class WD1772 {
         switch c {
         case 0xC:
             // Wait for the next ID field to pass under the head (10 per revolution).
-            let slot = WD1772.revolution / 10
+            let lay = layout(headCylinder, side())
+            let count = max(1, lay.count)
+            if lay.count == 0 { phase = .findSector; timer = WD1772.revolution * 2; return }
+            let slot = WD1772.revolution / count
             let k = revCycle / slot
-            nextID = (k + 1) % 10 + 1
+            nextID = lay.first + (k + 1) % count
             phase = .findSector
             timer = hasDisk() ? (k + 1) * slot - revCycle + 1 : WD1772.revolution * 2
         case 0x8...0xB:
@@ -181,12 +191,14 @@ public final class WD1772 {
             spunUp = true
             begin()
         case .typeIDone:
-            if command & 0x04 != 0 && (!hasDisk() || Int(trackReg) != cylinder) { seekError = true }
+            if command & 0x04 != 0 && (!hasDisk() || Int(trackReg) != headCylinder) { seekError = true }
             finish()
         case .findSector:
+            let cylinder = headCylinder
             guard hasDisk(), Int(trackReg) == cylinder || c == 0xC else { rnf = true; finish(); return }
             if c == 0xC {
-                let id = [UInt8(cylinder), UInt8(side()), UInt8(nextID), 2]
+                guard layout(cylinder, side()).count > 0 else { rnf = true; finish(); return }
+                let id = [UInt8(cylinder), UInt8(side()), UInt8(nextID), UInt8(layout(cylinder, side()).sizeCode)]
                 let crc = WD1772.crc16([0xA1, 0xA1, 0xA1, 0xFE] + id)
                 buffer = id + [UInt8(crc >> 8), UInt8(crc & 0xFF)]
                 sectorReg = UInt8(cylinder)
@@ -198,6 +210,7 @@ public final class WD1772 {
                 buffer = d; pos = 0; phase = .reading; timer = 1
             } else {
                 if writeProtected() { writeProtectFault = true; finish(); return }
+                writeSize = d.count
                 buffer = []; drq = true; phase = .writing; timer = WD1772.byteCycles * 2
             }
         case .reading:
@@ -214,8 +227,8 @@ public final class WD1772 {
             }
         case .writing:
             if drq { lostData = true; buffer.append(0) } else { buffer.append(dataReg) }
-            if buffer.count >= 512 {
-                writeSector(cylinder, side(), Int(sectorReg), buffer)
+            if buffer.count >= writeSize {
+                writeSector(headCylinder, side(), Int(sectorReg), buffer)
                 drq = false
                 if multiple { sectorReg &+= 1; phase = .findSector; timer = 1_000 }
                 else { phase = .crc; timer = WD1772.byteCycles * 2 }
@@ -251,7 +264,7 @@ public final class WD1772 {
     /// Extracts the sectors from a raw track written by WRITE TRACK (format).
     private func parseTrack() {
         var i = 0
-        var idSector = -1
+        var idSector = -1, idSize = 512
         let n = buffer.count
         while i < n {
             guard buffer[i] == 0xF5 else { i += 1; continue }
@@ -260,11 +273,12 @@ public final class WD1772 {
             guard j < n else { break }
             if buffer[j] == 0xFE && j + 4 < n {
                 idSector = Int(buffer[j + 3])
+                idSize = 128 << Int(buffer[j + 4] & 3)
                 i = j + 5
-            } else if buffer[j] == 0xFB && idSector > 0 && j + 512 < n {
-                writeSector(cylinder, side(), idSector, Array(buffer[j + 1...j + 512]))
+            } else if buffer[j] == 0xFB && idSector >= 0 && j + idSize < n {
+                writeSector(headCylinder, side(), idSector, Array(buffer[j + 1...j + idSize]))
                 idSector = -1
-                i = j + 513
+                i = j + idSize + 1
             } else {
                 i = j
             }

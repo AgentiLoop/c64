@@ -1,7 +1,7 @@
 import Foundation
 
 /// The Commodore ROM images. They are copyrighted and not shipped with the source; the
-/// loader looks in the usual places (our Application Support folder, the app bundle, VICE).
+/// loader looks in our Application Support folder, the app bundle and the usual shared ROM folders.
 public struct ROMSet {
     public var basic: [UInt8]
     public var kernal: [UInt8]
