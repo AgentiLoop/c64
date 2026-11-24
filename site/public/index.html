@@ -268,8 +268,12 @@ if (renderer) {
       float y = floor(gl_FragCoord.y / px);
       vec3 col = c64(0);                                         // black between the bars
       // The lines: grey bars, 14 raster lines tall, every 34 lines, standing still.
-      float m = mod(y, 34.0);
-      bool onLine = m < 14.0;
+      // Centre the bars vertically so the top and bottom bars are both whole, with equal margins.
+      float nBars = floor((lines - 14.0) / 34.0) + 1.0;
+      float used = (nBars - 1.0) * 34.0 + 14.0;
+      float yy = y - floor((lines - used) * 0.5);
+      float m = mod(yy, 34.0);
+      bool onLine = yy >= 0.0 && yy < used && m < 14.0;
       if (onLine) col = grayBar(int(m));
       // In the black gaps: a sparse two-layer starfield drifting left one C64 pixel at a time
       // (dark grey far, grey near), so the background moves without competing with the bars.
