@@ -94,9 +94,12 @@ final class EmulatorRunner {
         }
     }
 
+    private var quietFrames = 0
+    private var audioActive = true
+
     private func loop() {
         // Short slices let input reach the machine within a few milliseconds instead of a frame.
-        let slices = 8
+        let slices = 1
         var baseTime = EmulatorRunner.now()
         var baseCycles = c64.cycles
         var baseClock = c64.clockHz
@@ -121,6 +124,15 @@ final class EmulatorRunner {
             let warp = self.warp || (warpWhileTape && c64.datasette.mode != .stopped && c64.cassetteMotor)
                 || (warpWhileDisk && diskBusy)
             let samples = c64.sid.takeSamples()
+            // About a second of silence (or mute) pauses the audio output; sound resumes it.
+            let quiet = c64.sid.isSilent || audio.muted
+            quietFrames = quiet ? quietFrames + 1 : 0
+            let wantAudio = quietFrames < 60
+            if wantAudio != audioActive {
+                audioActive = wantAudio
+                let audio = self.audio
+                DispatchQueue.main.async { audio.setActive(wantAudio) }
+            }
             if !warp {
                 audio.ring.write(samples)
                 audio.ring.trim(to: Int(audio.sampleRate) / 10)   // at most 100 ms queued
@@ -132,6 +144,8 @@ final class EmulatorRunner {
             case .columns40: as80 = false
             case .columns80: as80 = c64.isC128
             }
+            // Only draw the 80-column picture while it is on screen (it costs as much as the VIC-II).
+            if c64.isC128 { c64.vdcDrawing = as80 }
             let newVIC = c64.vic.frameCount != vicFrame
             let newVDC = c64.vdcPictureCount != vdcPicture
             vicFrame = c64.vic.frameCount

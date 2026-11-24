@@ -57,6 +57,8 @@ public final class VDC8563 {
     public private(set) var pictureHeight = 200
     /// Advances only when a complete picture (both fields in interlace) is ready.
     public private(set) var pictureCount: UInt64 = 0
+    /// False while nobody looks at the 80-column picture: the beam still runs, but no pixels are drawn.
+    public var drawing = true
     var drawWidth = 640, drawHeight = 200
 
     /// RGBI colours of the 8563, 0xAARRGGBB.
@@ -198,7 +200,7 @@ public final class VDC8563 {
     private func endOfLine() {
         let step = interlaced ? 2 : 1
         if !inFineAdjust && rowCounter < Int(regs[6]) {
-            drawLine()
+            if drawing { drawLine() }
             // Bitmap data is a linear array: one line of R1 bytes (+ R27 skipped) per raster line.
             bitmapAddr += Int(regs[1]) + Int(regs[27])
         }

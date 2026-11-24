@@ -50,7 +50,7 @@ public final class VICII {
         return colorRead(o)
     }
 
-    var regs = [UInt8](repeating: 0, count: 0x40)
+    let regs = FixedBuffer<UInt8>(count: 0x40, repeating: 0)
     public private(set) var raster = 0
     public private(set) var cycle = 1
     public private(set) var irq = false
@@ -67,21 +67,21 @@ public final class VICII {
     var verticalBorder = true
     var mainBorder = true
 
-    var lineChars = [UInt8](repeating: 0, count: 40)
-    var lineColors = [UInt8](repeating: 0, count: 40)
-    var lineGfx = [UInt8](repeating: 0, count: 40)
-    var lineGfxValid = [Bool](repeating: false, count: 40)
+    let lineChars = FixedBuffer<UInt8>(count: 40, repeating: 0)
+    let lineColors = FixedBuffer<UInt8>(count: 40, repeating: 0)
+    let lineGfx = FixedBuffer<UInt8>(count: 40, repeating: 0)
+    let lineGfxValid = FixedBuffer<Bool>(count: 40, repeating: false)
     var idleGfx: UInt8 = 0
 
     // Sprites
-    var spriteDMA = [Bool](repeating: false, count: 8)
-    var spriteDisplay = [Bool](repeating: false, count: 8)
-    var mc = [Int](repeating: 0, count: 8)
-    var mcbase = [Int](repeating: 0, count: 8)
-    var expFF = [Bool](repeating: true, count: 8)
-    var spriteFetch = [UInt32](repeating: 0, count: 8)
-    var spriteData = [UInt32](repeating: 0, count: 8)
-    var spriteShown = [Bool](repeating: false, count: 8)
+    let spriteDMA = FixedBuffer<Bool>(count: 8, repeating: false)
+    let spriteDisplay = FixedBuffer<Bool>(count: 8, repeating: false)
+    let mc = FixedBuffer<Int>(count: 8, repeating: 0)
+    let mcbase = FixedBuffer<Int>(count: 8, repeating: 0)
+    let expFF = FixedBuffer<Bool>(count: 8, repeating: true)
+    let spriteFetch = FixedBuffer<UInt32>(count: 8, repeating: 0)
+    let spriteData = FixedBuffer<UInt32>(count: 8, repeating: 0)
+    let spriteShown = FixedBuffer<Bool>(count: 8, repeating: false)
     var spriteCollisionSS: UInt8 = 0
     var spriteCollisionSB: UInt8 = 0
 
@@ -107,13 +107,13 @@ public final class VICII {
 
     /// Cycles since power-on, for the register-write timing signature below.
     private var ticks = 0
-    private var lastWrite = [Int](repeating: Int.min / 2, count: 0x40)
+    private let lastWrite = FixedBuffer<Int>(count: 0x40, repeating: Int.min / 2)
     /// Per register, this frame: writes that came within two lines of the previous write to the same
     /// register (raster-bar loops), and which cycle positions they took on a 63- and a 65-cycle line.
-    private var loopWrites = [Int](repeating: 0, count: 0x40)
-    private var pos63 = [UInt64](repeating: 0, count: 0x40)
-    private var pos65 = [UInt64](repeating: 0, count: 0x40)
-    private var pos65Last = [Bool](repeating: false, count: 0x40)
+    private let loopWrites = FixedBuffer<Int>(count: 0x40, repeating: 0)
+    private let pos63 = FixedBuffer<UInt64>(count: 0x40, repeating: 0)
+    private let pos65 = FixedBuffer<UInt64>(count: 0x40, repeating: 0)
+    private let pos65Last = FixedBuffer<Bool>(count: 0x40, repeating: false)
 
     private func noteWriteTiming(_ r: Int) {
         let gap = ticks - lastWrite[r]
@@ -150,7 +150,14 @@ public final class VICII {
     }
 
     public init() {}
-    deinit { pixels.deallocate() }
+    deinit {
+        pixels.deallocate()
+        regs.deallocate(); lineChars.deallocate(); lineColors.deallocate(); lineGfx.deallocate()
+        lineGfxValid.deallocate(); spriteDMA.deallocate(); spriteDisplay.deallocate(); mc.deallocate()
+        mcbase.deallocate(); expFF.deallocate(); spriteFetch.deallocate(); spriteData.deallocate()
+        spriteShown.deallocate(); lastWrite.deallocate(); loopWrites.deallocate(); pos63.deallocate()
+        pos65.deallocate(); pos65Last.deallocate()
+    }
 
     /// Switches between the PAL 6569 (63 cycles × 312 lines) and NTSC 6567R8 (65 × 263).
     public func setStandard(_ s: VideoStandard) {
@@ -187,7 +194,7 @@ public final class VICII {
     }
 
     public func reset() {
-        regs = [UInt8](repeating: 0, count: 0x40)
+        regs.fill(0)
         raster = 0; cycle = 1; irr = 0; imr = 0; irq = false; rasterCompare = 0
         vc = 0; vcbase = 0; rc = 0; displayState = false
         for n in 0..<8 { spriteDMA[n] = false; spriteDisplay[n] = false; expFF[n] = true }

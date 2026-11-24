@@ -25,12 +25,24 @@ public final class CPU6502<Bus: CPUBus> {
     /// Optional hook executed before each opcode fetch; return true if it handled the
     /// instruction itself (used for KERNAL traps).
     public var trap: ((CPU6502) -> Bool)?
-    public var trapAddresses = Set<UInt16>()
+    public var trapAddresses = Set<UInt16>() {
+        didSet {
+            trapBits.update(repeating: 0, count: 1024)
+            for a in trapAddresses { trapBits[Int(a) >> 6] |= 1 << UInt64(a & 63) }
+        }
+    }
+    /// `trapAddresses` as a 64K-bit map: checked before every opcode, so no hashing per instruction.
+    private let trapBits: UnsafeMutablePointer<UInt64> = {
+        let p = UnsafeMutablePointer<UInt64>.allocate(capacity: 1024)
+        p.initialize(repeating: 0, count: 1024)
+        return p
+    }()
 
     unowned(unsafe) let bus: Bus
     private var pollI: Bool?
 
     public init(bus: Bus) { self.bus = bus }
+    deinit { trapBits.deallocate() }
 
     public var p: UInt8 {
         get {
@@ -82,7 +94,7 @@ public final class CPU6502<Bus: CPUBus> {
             interrupt(vector: 0xFFFE)
             return
         }
-        if let trap = trap, trapAddresses.contains(pc), trap(self) { return }
+        if trapBits[Int(pc) >> 6] & (1 << UInt64(pc & 63)) != 0, let trap = trap, trap(self) { return }
         let opcode = fetch()
         execute(opcode)
     }

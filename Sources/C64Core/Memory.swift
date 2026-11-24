@@ -31,3 +31,27 @@ public struct Memory: RandomAccessCollection, MutableCollection {
         for (i, b) in bytes.enumerated() where range.lowerBound + i < count { base[range.lowerBound + i] = b }
     }
 }
+
+/// Fixed-size storage for per-cycle chip state (see `Memory`): element access with no array
+/// copy-on-write checks or retains. Copies share storage; the owner calls `deallocate()`.
+public struct FixedBuffer<Element>: RandomAccessCollection, MutableCollection {
+    let base: UnsafeMutablePointer<Element>
+    public let count: Int
+
+    init(count: Int, repeating value: Element) {
+        base = .allocate(capacity: count)
+        base.initialize(repeating: value, count: count)
+        self.count = count
+    }
+
+    func fill(_ value: Element) { base.update(repeating: value, count: count) }
+    func deallocate() { base.deallocate() }
+
+    public var startIndex: Int { 0 }
+    public var endIndex: Int { count }
+
+    public subscript(i: Int) -> Element {
+        @inline(__always) get { base[i] }
+        @inline(__always) nonmutating set { base[i] = newValue }
+    }
+}

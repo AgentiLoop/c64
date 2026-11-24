@@ -71,4 +71,11 @@ final class AudioOutput {
     func start() {
         do { try engine.start() } catch { NSLog("Audio engine failed: \(error)") }
     }
+
+    /// Pauses the output while there is nothing to hear (silent SID or muted), so the audio
+    /// threads don't run; starts it again when sound comes back.
+    func setActive(_ active: Bool) {
+        if active && !engine.isRunning { start() }
+        if !active && engine.isRunning { engine.pause() }
+    }
 }

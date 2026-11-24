@@ -37,6 +37,12 @@ extension C64 {
         return (v.pictureWidth, v.pictureHeight)
     }
 
+    /// Whether the VDC draws its picture (turn off while only the 40-column screen is shown).
+    public var vdcDrawing: Bool {
+        get { c128?.vdc.drawing ?? false }
+        set { c128?.vdc.drawing = newValue }
+    }
+
     /// Sequence number of the last completed VDC picture.
     public var vdcPictureCount: UInt64 { c128?.vdc.pictureCount ?? 0 }
 

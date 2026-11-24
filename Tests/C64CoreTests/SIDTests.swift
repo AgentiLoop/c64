@@ -46,4 +46,16 @@ final class SIDTests: XCTestCase {
         }
         XCTAssertLessThanOrEqual(sid.voices[0].level, 0xFF)
     }
+
+    /// A silent voice advanced in bulk ends in the same state as one clocked cycle by cycle.
+    func testSilentVoiceSkipMatchesPerCycle() {
+        for (freq, control, sr, n) in [(0x1234, 0x80, 0x0A, 100_000), (0xFFFF, 0x40, 0x03, 77_777), (7, 0x10, 0x0F, 5)] as [(UInt32, UInt8, UInt8, Int)] {
+            let a = SID.Voice(), b = SID.Voice()
+            for v in [a, b] { v.freq = freq; v.control = control; v.sustainRelease = sr; v.rateCounter = 3 }
+            for _ in 0..<n { a.clockOscillator(); a.clockEnvelope() }
+            b.skip(n)
+            XCTAssertEqual(a.acc, b.acc); XCTAssertEqual(a.noise, b.noise)
+            XCTAssertEqual(a.rateCounter, b.rateCounter); XCTAssertEqual(a.level, b.level)
+        }
+    }
 }

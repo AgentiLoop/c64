@@ -9,7 +9,9 @@ final class EmulatorView: MTKView, MTKViewDelegate {
     var keyMapper: KeyMapper?
     var onFileDrop: ((URL) -> Void)?
     /// Part of the 384×272 VIC-II frame to show (lets the user trim the border).
-    var crop = CGRect(x: 0, y: 0, width: VICII.screenWidth, height: VICII.screenHeight)
+    var crop = CGRect(x: 0, y: 0, width: VICII.screenWidth, height: VICII.screenHeight) { didSet { needsRedraw = true } }
+    /// Set when the picture must be drawn again although no new frame arrived (resize, crop).
+    private var needsRedraw = true
 
     private let queue: MTLCommandQueue
     private let pipeline: MTLRenderPipelineState
@@ -52,8 +54,8 @@ final class EmulatorView: MTKView, MTKViewDelegate {
         colorPixelFormat = .bgra8Unorm
         clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
         framebufferOnly = true
-        // Draw on every display refresh (up to ProMotion rates); a frame is uploaded only when new.
-        preferredFramesPerSecond = 120
+        // Draw in step with the display at 60 Hz (the C64's rate); a frame is uploaded only when new.
+        preferredFramesPerSecond = 60
         isPaused = false
         enableSetNeedsDisplay = false
         delegate = self
@@ -70,8 +72,11 @@ final class EmulatorView: MTKView, MTKViewDelegate {
     // MARK: Rendering
 
     /// Copies the runner's latest picture into the texture if it changed since the last upload.
-    private func uploadFrame() {
-        guard let runner = runner, let device = device else { return }
+    /// Returns true if a new picture was uploaded.
+    @discardableResult
+    private func uploadFrame() -> Bool {
+        guard let runner = runner, let device = device else { return false }
+        var uploaded = false
         runner.withFrame(newerThan: &frameSerial) { bytes, w, h, eighty in
             showing80 = eighty
             if texture?.width != w || texture?.height != h {
@@ -83,11 +88,15 @@ final class EmulatorView: MTKView, MTKViewDelegate {
             guard let base = bytes.baseAddress, bytes.count >= w * h * 4 else { return }
             texture?.replace(region: MTLRegionMake2D(0, 0, w, h), mipmapLevel: 0,
                              withBytes: base, bytesPerRow: w * 4)
+            uploaded = true
         }
+        return uploaded
     }
 
     func draw(in view: MTKView) {
-        uploadFrame()
+        // Nothing new: leave the last presented picture on screen instead of drawing it again.
+        guard uploadFrame() || needsRedraw else { return }
+        needsRedraw = false
         guard let pass = currentRenderPassDescriptor,
               let drawable = currentDrawable,
               let buffer = queue.makeCommandBuffer(),
@@ -107,7 +116,7 @@ final class EmulatorView: MTKView, MTKViewDelegate {
         buffer.commit()
     }
 
-    func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
+    func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) { needsRedraw = true }
 
     // MARK: Keyboard
 

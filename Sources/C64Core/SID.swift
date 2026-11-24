@@ -60,6 +60,28 @@ public final class SID {
             prevBit19 = bit19
         }
 
+        /// Advances a voice that is silent and idle (gate off, level 0) by `n` cycles at once:
+        /// same accumulator, noise and rate-counter state as `n` single cycles.
+        func skip(_ n: Int) {
+            if !test {
+                let a0 = UInt64(acc), d = UInt64(freq) * UInt64(n)
+                let half: UInt64 = 0x80000, full: UInt64 = 0x100000
+                // Rising edges of bit 19 = crossings of 2^19 + k·2^20.
+                let edges = (a0 + d + full - half) / full - (a0 + full - half) / full
+                for _ in 0..<min(edges, 1 << 20) {
+                    let b = ((noise >> 22) ^ (noise >> 17)) & 1
+                    noise = ((noise << 1) | b) & 0x7FFFFF
+                }
+                acc = UInt32((a0 + d) & 0xFFFFFF)
+                prevBit19 = acc & 0x080000 != 0
+            }
+            msbRising = false
+            let period = Voice.ratePeriods[Int(sustainRelease & 0x0F)]
+            let r = rateCounter
+            let toHit = r < period ? Int(period - r) : Int(0x8000 - r + period)
+            rateCounter = n < toHit ? (r + UInt32(n)) & 0x7FFF : UInt32((n - toHit) % Int(period))
+        }
+
         @inline(__always) func clockEnvelope() {
             let period: UInt32
             switch state {
@@ -155,6 +177,7 @@ public final class SID {
     }
 
     public func reset() {
+        silent = false; skippedCycles = 0
         for v in voices { v.reset() }
         filterCutoff = 0; filterResonance = 0; filterRouting = 0; modeVolume = 0
         low = 0; band = 0
@@ -169,7 +192,30 @@ public final class SID {
         filterDamp = 1.4 - Float(filterResonance) * (1.15 / 15)
     }
 
+    /// Silent and idle: every voice released to level 0 and the filter settled, so the output is a
+    /// constant and the voices are clocked in bulk (`skippedCycles`) instead of every cycle.
+    private var silent = false
+    /// True while the chip outputs a constant level (see `silent`).
+    public var isSilent: Bool { silent }
+    private var skippedCycles = 0
+
+    private func catchUp() {
+        guard skippedCycles > 0 else { return }
+        v0.skip(skippedCycles); v1.skip(skippedCycles); v2.skip(skippedCycles)
+        skippedCycles = 0
+    }
+
+    /// Output while silent: the volume register's DC offset (constant, so the DC blocker removes it).
+    private var silentLevel: Float = 0
+
+    private func checkSilent() -> Bool {
+        v0.holdZero && v1.holdZero && v2.holdZero
+            && v0.state == .release && v1.state == .release && v2.state == .release
+            && abs(low) < 1e-6 && abs(band) < 1e-6
+    }
+
     public func read(_ reg: Int) -> UInt8 {
+        catchUp()
         switch reg {
         case 0x19, 0x1A: return 0xFF
         case 0x1B: return UInt8(voices[2].waveform(ringSource: voices[1].acc) >> 4)
@@ -179,6 +225,8 @@ public final class SID {
     }
 
     public func write(_ reg: Int, _ value: UInt8) {
+        catchUp()
+        silent = false
         lastWrite = value
         if reg < 21 {
             let v = voices[reg / 7]
@@ -204,6 +252,12 @@ public final class SID {
 
     /// One PHI2 cycle.
     @inline(__always) public func tick() {
+        if silent {
+            skippedCycles += 1
+            sampleClock += 1
+            if sampleClock >= cyclesPerSample { emitSample() }
+            return
+        }
         v0.clockOscillator(); v1.clockOscillator(); v2.clockOscillator()
         // Hard sync: voice n is reset when voice n-1's MSB rises.
         if v0.sync && v2.msbRising { v0.acc = 0 }
@@ -218,10 +272,18 @@ public final class SID {
             mixCounter = 0
             accumulator += mix()
             accumulated += 1
+            if checkSilent() {
+                silent = true
+                silentLevel = Float(modeVolume & 0x0F) / 15 * 0.25
+            }
         }
-        if sampleClock >= cyclesPerSample {
+        if sampleClock >= cyclesPerSample { emitSample() }
+    }
+
+    private func emitSample() {
+        do {
             sampleClock -= cyclesPerSample
-            let s = accumulated > 0 ? accumulator / Float(accumulated) : 0
+            let s = accumulated > 0 ? accumulator / Float(accumulated) : silent ? silentLevel : 0
             accumulator = 0
             accumulated = 0
             // DC blocker

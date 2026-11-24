@@ -38,7 +38,7 @@ final class ShakeProbeTests: XCTestCase {
             // Traced frame: step instruction by instruction.
             var log: [String] = []
             let start = c64.vic.frameCount
-            var old = c64.vic.regs
+            var old = Array(c64.vic.regs)
             var oldCmp = c64.vic.rasterCompare
             var oldBank = c64.vicBank
             var oldI = c64.cpu.i
@@ -58,7 +58,7 @@ final class ShakeProbeTests: XCTestCase {
                 }
                 if r == 55 && r0 == 54 { log.append("  line 55 starts with vcbase=\(c64.vic.vcbase) rc=\(c64.vic.rc)") }
                 oldI = c64.cpu.i; oldSP = c64.cpu.sp
-                let now = c64.vic.regs
+                let now = Array(c64.vic.regs)
                 for reg in [0x11, 0x16, 0x18, 0x15, 0x20, 0x21, 0x1A] where now[reg] != old[reg] {
                     log.append("  $D0\(h(reg)) \(h(Int(old[reg]))) -> \(h(Int(now[reg]))) pc=\(h(pc, 4)) after r\(r) c\(c)")
                 }
