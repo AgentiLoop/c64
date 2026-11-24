@@ -149,9 +149,19 @@ public final class VICII {
         return (pal, ntsc)
     }
 
+    /// `palette` in fixed storage (reading a static array checks its lazy initialisation every time).
+    private let pal: UnsafeMutablePointer<UInt32> = {
+        let p = UnsafeMutablePointer<UInt32>.allocate(capacity: 16)
+        for i in 0..<16 { p[i] = VICII.palette[i] }
+        return p
+    }()
+
+    /// Off in tests that compare the fast drawing paths with the general one.
+    var fastDraw = true
+
     public init() {}
     deinit {
-        pixels.deallocate()
+        pixels.deallocate(); pal.deallocate()
         regs.deallocate(); lineChars.deallocate(); lineColors.deallocate(); lineGfx.deallocate()
         lineGfxValid.deallocate(); spriteDMA.deallocate(); spriteDisplay.deallocate(); mc.deallocate()
         mcbase.deallocate(); expFF.deallocate(); spriteFetch.deallocate(); spriteData.deallocate()
@@ -390,7 +400,10 @@ public final class VICII {
         // g-access of column i-1 precedes the c-access of column i in the same cycle.
         if cycle >= 16 && cycle <= 55 { gAccess() }
         if badline && cycle >= 15 && cycle <= 54 && vmli < 40 { cAccess() }
-        for n in 0..<8 where spriteCycle(n) == cycle { spriteFetchCycle(n) }
+        // Sprite n's fetch cycle is spriteCycle(n) = cyclesPerLine - 5 + 2n (wrapping into the next line).
+        var sd = cycle - (cyclesPerLine - 5)
+        if sd < 0 { sd += cyclesPerLine }
+        if sd & 1 == 0 && sd < 16 { spriteFetchCycle(sd >> 1) }
         // The CPU writes in the second half of a cycle, after the VIC's own accesses: a new
         // $D011 changes the badline condition from the next cycle on (DMA delay / VSP scrolling).
         if d011Written { d011Written = false; updateBadline() }
@@ -424,7 +437,7 @@ public final class VICII {
     private func fillUnusedLines() {
         let firstUnused = linesPerFrame - VICII.firstVisibleLine
         guard firstUnused < VICII.screenHeight else { return }
-        let color = VICII.palette[Int(regs[0x20] & 0x0F)]
+        let color = pal[Int(regs[0x20] & 0x0F)]
         for i in firstUnused * VICII.screenWidth..<VICII.screenHeight * VICII.screenWidth { pixels[i] = color }
     }
 
@@ -456,25 +469,35 @@ public final class VICII {
         let bmm = regs[0x11] & 0x20 != 0
         let mcm = regs[0x16] & 0x10 != 0
         let xs = xscroll
-        let borderColor = VICII.palette[Int(regs[0x20] & 0x0F)]
-        let anySprites = spriteShown.contains(true)
+        let borderColor = pal[Int(regs[0x20] & 0x0F)]
+        var anySprites = false
+        for n in 0..<8 where spriteShown[n] { anySprites = true; break }
 
         // Fast paths for the common blocks without sprites where no border flip-flop can change
         // within these 8 pixels: solid border, or standard text mode fully inside the screen.
-        if !anySprites && !(x0...x0 + 7).contains(leftCmp) && !(x0...x0 + 7).contains(rightCmp) {
+        if fastDraw && !anySprites && !(x0...x0 + 7).contains(leftCmp) && !(x0...x0 + 7).contains(rightCmp) {
             if mainBorder || verticalBorder {
-                for p in 0..<8 { pixels[rowBase + p] = borderColor }
+                let out = pixels + rowBase
+                for p in 0..<8 { out[p] = borderColor }
                 return
             }
             let gx0 = x0 - 24 - xs
             if !ecm && !bmm && !mcm && gx0 >= 0 && gx0 + 7 < 320 {
-                let bg = VICII.palette[Int(regs[0x21] & 0x0F)]
-                var col = gx0 >> 3, bit = gx0 & 7
+                let bg = pal[Int(regs[0x21] & 0x0F)]
+                let col = gx0 >> 3, shift = gx0 & 7
+                let out = pixels + rowBase
+                // The 8 pixels come from this column's byte and (when scrolled) the next one's.
+                let fg0 = pal[lineGfxValid[col] ? Int(lineColors[col]) : 0]
+                var bits = UInt16(lineGfx[col]) << 8
+                var fg1 = fg0
+                if shift != 0 {
+                    bits |= UInt16(lineGfx[col + 1])
+                    fg1 = pal[lineGfxValid[col + 1] ? Int(lineColors[col + 1]) : 0]
+                }
+                bits <<= UInt16(shift)
                 for p in 0..<8 {
-                    let on = lineGfx[col] >> (7 - bit) & 1 != 0
-                    pixels[rowBase + p] = on ? VICII.palette[lineGfxValid[col] ? Int(lineColors[col]) : 0] : bg
-                    bit += 1
-                    if bit == 8 { bit = 0; col += 1 }
+                    out[p] = bits & 0x8000 != 0 ? (p < 8 - shift ? fg0 : fg1) : bg
+                    bits <<= 1
                 }
                 return
             }
@@ -537,7 +560,7 @@ public final class VICII {
                     colorIndex = 0
                 }
             }
-            var color = VICII.palette[colorIndex]
+            var color = pal[colorIndex]
 
             // Sprites
             if anySprites {
@@ -568,7 +591,7 @@ public final class VICII {
                     }
                     if ci < 0 { continue }
                     hits |= 1 << n
-                    if spriteHit < 0 { spriteHit = n; spriteColor = VICII.palette[ci] }
+                    if spriteHit < 0 { spriteHit = n; spriteColor = pal[ci] }
                 }
                 if hits != 0 {
                     if hits & (hits - 1) != 0 {

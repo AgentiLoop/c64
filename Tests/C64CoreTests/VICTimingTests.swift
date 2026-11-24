@@ -64,4 +64,20 @@ final class VICTimingTests: XCTestCase {
         XCTAssertEqual(writeCycles, [31])                     // …removed by the time of the write
         XCTAssertEqual(fetches, [24])
     }
+
+    /// The fast border/text drawing paths produce exactly the pixels of the general path,
+    /// including horizontal scrolling and the 38-column border.
+    func testFastDrawingMatchesGeneralPath() throws {
+        guard let roms = ROMSet.load() else { throw XCTSkip("ROMs not installed") }
+        var pictures: [[UInt32]] = []
+        for fast in [true, false] {
+            let c64 = C64(roms: roms)
+            c64.vic.fastDraw = fast
+            for _ in 0..<150 { c64.runFrame() }
+            c64.queueTyping("POKE53270,195:POKE53280,2:PRINT\"HELLO WORLD\"\n")
+            for _ in 0..<60 { c64.runFrame() }
+            pictures.append(c64.vic.frameBuffer)
+        }
+        XCTAssertEqual(pictures[0], pictures[1])
+    }
 }
