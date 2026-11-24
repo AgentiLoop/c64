@@ -18,7 +18,9 @@ public struct C128ROMs {
 /// KERNAL reset vector (the Z80 start-up is skipped).
 final class C128Memory {
     let roms: C128ROMs
-    var ram1 = [UInt8](repeating: 0, count: 0x10000)
+    /// RAM bank 1 and the ROMs in fixed storage (read on nearly every cycle).
+    let ram1 = Memory(count: 0x10000)
+    let kernal: Memory, basicLo: Memory, basicHi: Memory, chargen: Memory
     /// Configuration register ($D500 / $FF00) and the four preconfiguration registers.
     var cr: UInt8 = 0
     var pcr = [UInt8](repeating: 0, count: 4)
@@ -41,7 +43,13 @@ final class C128Memory {
     /// A program running from RAM has written to the VDC ($D601).
     var programUsesVDC = false
 
-    init(roms: C128ROMs) { self.roms = roms }
+    init(roms: C128ROMs) {
+        self.roms = roms
+        kernal = Memory(roms.kernal); basicLo = Memory(roms.basicLo)
+        basicHi = Memory(roms.basicHi); chargen = Memory(roms.chargen)
+    }
+
+    deinit { for m in [ram1, kernal, basicLo, basicHi, chargen] { m.deallocate() } }
 
     func reset() {
         cr = 0; pcr = [0, 0, 0, 0]; mcr = 0; rcr = 0; fast = false; halfCycle = false
@@ -59,7 +67,8 @@ final class C128Memory {
         var bank = Int(cr >> 6) & 1
         if bank == Int(p0h & 1) && page == Int(p0l) { return (0, a & 0xFF) }          // swapped with page 0
         if bank == Int(p1h & 1) && page == Int(p1l) { return (0, 0x100 | (a & 0xFF)) }  // swapped with page 1
-        let size = [0x400, 0x1000, 0x2000, 0x4000][Int(rcr & 3)]
+        let size: Int
+        switch rcr & 3 { case 0: size = 0x400; case 1: size = 0x1000; case 2: size = 0x2000; default: size = 0x4000 }
         if (rcr & 4 != 0 && a < size) || (rcr & 8 != 0 && a >= 0x10000 - size) { bank = 0 }
         return (bank, a)
     }
@@ -155,18 +164,18 @@ extension C64 {
         }
         switch a {
         case 0x4000..<0x8000:
-            if cr & 0x02 == 0 { return m.roms.basicLo[a - 0x4000] }
+            if cr & 0x02 == 0 { return m.basicLo[a - 0x4000] }
         case 0x8000..<0xC000:
             switch (cr >> 2) & 3 {
-            case 0: return m.roms.basicHi[a - 0x8000]
+            case 0: return m.basicHi[a - 0x8000]
             case 3: break
             default: return 0xFF                              // no function ROMs
             }
         case 0xC000...0xFFFF:
             switch (cr >> 4) & 3 {
             case 0:
-                if a >> 12 == 0xD { return m.roms.chargen[a & 0x0FFF] }
-                return m.roms.kernal[a - 0xC000]
+                if a >> 12 == 0xD { return m.chargen[a & 0x0FFF] }
+                return m.kernal[a - 0xC000]
             case 3: break
             default: return 0xFF
             }
@@ -215,7 +224,7 @@ extension C64 {
     /// character ROM at $1000 in VIC banks 0 and 2 while port bit 2 is LOW (the opposite of the C64,
     /// as in VICE's c128mem.c). The US ROM's lower 4K (with CAPS LOCK up) is the standard set.
     func vicRead128(_ m: C128Memory, _ addr: Int) -> UInt8 {
-        if !charen && vicBank & 1 == 0 && addr & 0x3000 == 0x1000 { return m.roms.chargen[addr & 0x0FFF] }
+        if !charen && vicBank & 1 == 0 && addr & 0x3000 == 0x1000 { return m.chargen[addr & 0x0FFF] }
         let full = vicBank << 14 | addr
         return m.rcr & 0x40 == 0 ? ram[full] : m.ram1[full]
     }

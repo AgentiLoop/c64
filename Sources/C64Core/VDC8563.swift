@@ -38,7 +38,11 @@ public final class VDC8563 {
     var clockHz = C64.palClock { didSet { updateLineThreshold() } }
     /// `lineDots * clockHz`, kept up to date so the per-cycle beam step doesn't recompute it.
     private var lineThreshold = 1
-    private func updateLineThreshold() { lineThreshold = max(1, lineDots * clockHz) }
+    private func updateLineThreshold() {
+        syncDots()
+        lineThreshold = max(1, lineDots * clockHz)
+        scheduleLineEnd()
+    }
 
     // Beam.
     var dotAcc = 0
@@ -84,7 +88,8 @@ public final class VDC8563 {
         regs[0] = 126; regs[1] = 80; regs[4] = 38; regs[6] = 25; regs[9] = 7; regs[22] = 0x78; regs[23] = 8
         regs[25] = 0x47; regs[26] = 0xF0; regs[28] = 0x20; regs[34] = 0x7D; regs[35] = 0x64
         select = 0
-        dotAcc = 0; rowCounter = 0; rowLine = 0; inFineAdjust = false; displayLine = 0
+        dotAcc = 0; sinceSync = 0; rowCounter = 0; rowLine = 0; inFineAdjust = false; displayLine = 0
+        scheduleLineEnd()
         busyUntil = 0
         startFrame()
     }
@@ -179,11 +184,28 @@ public final class VDC8563 {
     /// Advances the VDC by one CPU cycle (`cycle` = the machine's cycle counter).
     @inline(__always) func tick(cycle: UInt64) {
         now = cycle
-        dotAcc += VDC8563.dotClock
-        if dotAcc >= lineThreshold {
-            dotAcc -= lineThreshold
-            endOfLine()
-        }
+        sinceSync += 1
+        cyclesLeft -= 1
+        if cyclesLeft == 0 { lineEnd() }
+    }
+
+    // The dot accumulator is advanced in bulk: `dotAcc` is its value `sinceSync` cycles ago, and
+    // `cyclesLeft` counts down to the cycle on which it reaches `lineThreshold` (the line ends).
+    private var sinceSync = 0
+    private var cyclesLeft = 1
+
+    private func syncDots() { dotAcc += sinceSync * VDC8563.dotClock; sinceSync = 0 }
+
+    private func scheduleLineEnd() {
+        let need = lineThreshold - dotAcc
+        cyclesLeft = need <= 0 ? 1 : (need + VDC8563.dotClock - 1) / VDC8563.dotClock
+    }
+
+    private func lineEnd() {
+        syncDots()
+        dotAcc -= lineThreshold
+        endOfLine()
+        scheduleLineEnd()
     }
 
     private func startFrame() {
