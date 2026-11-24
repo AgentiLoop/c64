@@ -175,6 +175,8 @@ public final class VICII {
     /// False while the picture isn't shown (C128 on its 80-column screen): pixels aren't produced
     /// when no sprite is on the line (with sprites, drawing also computes collisions, so it goes on).
     public var drawing = true
+    /// True while any sprite's DMA is on (`spriteDMA`), so CPU accesses can skip the per-sprite check.
+    private var anySpriteDMA = false
 
     public init() {}
     deinit {
@@ -225,6 +227,7 @@ public final class VICII {
         raster = 0; cycle = 1; irr = 0; imr = 0; irq = false; rasterCompare = 0
         vc = 0; vcbase = 0; rc = 0; displayState = false
         for n in 0..<8 { spriteDMA[n] = false; spriteDisplay[n] = false; expFF[n] = true }
+        anySpriteDMA = false
         palHint = false; palFrames = 0; ntscFrames = 0; quietFrames = 0
     }
 
@@ -240,6 +243,7 @@ public final class VICII {
     /// kind must wait (BA low; writes may continue for the first three cycles).
     @inline(__always) public func blocksCPU(write: Bool) -> Bool {
         if badline && cycle >= (write ? 15 : 12) && cycle <= 54 { return true }
+        if !anySpriteDMA { return false }
         for n in 0..<8 where spriteDMA[n] {
             let sc = spriteCycle(n)
             var d = cycle - sc
@@ -385,7 +389,11 @@ public final class VICII {
         case 16:
             for n in 0..<8 where expFF[n] {
                 mcbase[n] = (mcbase[n] + 1) & 0x3F
-                if mcbase[n] == 63 { spriteDMA[n] = false; spriteDisplay[n] = false }
+                if mcbase[n] == 63 {
+                    spriteDMA[n] = false; spriteDisplay[n] = false
+                    anySpriteDMA = false
+                    for k in 0..<8 where spriteDMA[k] { anySpriteDMA = true }
+                }
             }
         case 55:
             let yexp = regs[0x17]
@@ -464,6 +472,7 @@ public final class VICII {
         for n in 0..<8 where enable & (1 << n) != 0 && !spriteDMA[n] {
             if Int(regs[1 + 2 * n]) == raster & 0xFF {
                 spriteDMA[n] = true
+                anySpriteDMA = true
                 mcbase[n] = 0
                 if yexp & (1 << n) != 0 { expFF[n] = false }
             }
