@@ -70,7 +70,7 @@
   .hero canvas#bars { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
   .hero-screen { position: relative; z-index: 1; width: min(980px, 100%); background: var(--c64-blue);
                  padding: clamp(24px, 4vw, 48px); display: grid; grid-template-columns: auto 1fr; gap: 12px 40px;
-                 align-items: center; box-shadow: 0 0 0 4px rgba(0,0,0,.18), 0 30px 80px rgba(0,0,0,.45); }
+                 align-items: center; }   /* hard pixel edge: no shadow or blur outside the screen */
   .hero-screen::after { content: ""; position: absolute; inset: 0; pointer-events: none;   /* scanlines */
                         background: repeating-linear-gradient(rgba(0,0,0,0) 0 2px, rgba(0,0,0,.16) 2px 3px);
                         box-shadow: inset 0 0 90px rgba(0,0,0,.45); }
