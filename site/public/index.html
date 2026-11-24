@@ -232,7 +232,7 @@ open build/C64.app</pre>
 <script type="importmap">{ "imports": { "three": "https://unpkg.com/three@0.170.0/build/three.module.js" } }</script>
 <script type="module">
 // Hero border: tape-loader raster bars in the C64's 16 colours, drawn by a three.js fragment shader
-// on a full-screen quad, with chunky pixels, scanlines and a vignette. The mouse nudges the bars.
+// on a full-screen quad, with chunky pixels, scanlines and a vignette.
 import * as THREE from "three";
 const canvas = document.getElementById("bars");
 const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -244,20 +244,20 @@ if (renderer) {
   const hex = ["000000","ffffff","68372b","70a4b2","6f3d86","588d43","352879","b8c76f",
                "6f4f25","433900","9a6759","444444","6c6c6c","9ad284","6c5eb5","959595"];
   const uniforms = {
-    time: { value: 0 }, res: { value: new THREE.Vector2() }, mouse: { value: new THREE.Vector2(.5, .5) },
+    time: { value: 0 }, res: { value: new THREE.Vector2() },
     pal: { value: hex.map(h => new THREE.Color("#" + h).convertSRGBToLinear()) }
   };
   const material = new THREE.ShaderMaterial({ uniforms, vertexShader: `
     void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }`, fragmentShader: `
-    uniform float time; uniform vec2 res; uniform vec2 mouse; uniform vec3 pal[16];
+    uniform float time; uniform vec2 res; uniform vec3 pal[16];
     vec3 c64(int i) { vec3 c = pal[0]; for (int k = 0; k < 16; k++) if (k == i) c = pal[k]; return c; }
     void main() {
       float px = max(2.0, floor(res.y / 270.0));                 // one C64 raster line per block
       vec2 p = floor(gl_FragCoord.xy / px);
       float y = p.y;
       // Loader stripes: bands of random width that race up the border, plus a slow sine wobble.
-      float speed = 26.0 + mouse.x * 40.0;
-      float band = floor((y + time * speed + 18.0 * sin(y * 0.021 + time * 0.7)) / (3.0 + 5.0 * mouse.y));
+      float speed = 46.0;
+      float band = floor((y + time * speed + 18.0 * sin(y * 0.021 + time * 0.7)) / 5.5);
       float r = fract(sin(band * 12.9898) * 43758.5453);
       int idx = int(floor(r * 16.0));
       vec3 col = c64(idx);
@@ -278,8 +278,6 @@ if (renderer) {
   const resize = () => { const w = hero.clientWidth, h = hero.clientHeight;
     renderer.setSize(w, h, false); renderer.getDrawingBufferSize(uniforms.res.value); };
   new ResizeObserver(resize).observe(hero); resize();
-  hero.addEventListener("pointermove", e => { const b = hero.getBoundingClientRect();
-    uniforms.mouse.value.set((e.clientX - b.left) / b.width, 1 - (e.clientY - b.top) / b.height); });
   let visible = true;
   new IntersectionObserver(([e]) => { visible = e.isIntersecting; }).observe(hero);
   const clock = new THREE.Clock();
