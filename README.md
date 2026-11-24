@@ -60,7 +60,7 @@ input switch on a monitor. It needs the C128 ROMs (see [ROMs](#roms)); the detai
 | CIA 6526 ×2 | Timers A/B, TOD, ICR, keyboard/joystick ports, VIC bank, IEC lines, NMI |
 | Keyboard | Mac keyboard → C64 matrix (symbolic punctuation), RESTORE, joystick on numpad / cursor keys / game controllers |
 | 1541 drive | True emulation: drive 6502 running the original DOS ROM, 2× VIA 6522, stepper head, GCR disk at the correct zone speeds; reads and writes |
-| Media | D64 (autostart `LOAD"*",8,1` + `RUN`, Drive menu attach/eject/new blank disk, changes written back to the .d64), G64 raw GCR images with half-tracks (for copy-protected disks; changes written back as G64), PRG and P00 autostart. T64 autostart, D81 on drive 9 (autostart `LOAD"*",9,1` + `RUN`) |
+| Media | D64 (autostart `LOAD"*",8,1` + `RUN`, Drive menu attach/eject/new blank disk, changes written back to the .d64), G64 raw GCR images with half-tracks (for copy-protected disks; changes written back as G64), PRG and P00 autostart, CRT cartridges (normal 8K/16K/Ultimax, Ocean, Magic Desk, EasyFlash, C64 Game System, Dinamic, Simons' BASIC, Epyx FastLoad; File ▸ Remove Cartridge; in C128 mode a cartridge starts C64 mode as on the real machine). T64 autostart, D81 on drive 9 (autostart `LOAD"*",9,1` + `RUN`) |
 | 1581 drive (3.5") | True emulation as device 9: 2 MHz 6502 running the original 1581 DOS ROM, 8520 CIA, WD1772 controller (seek/step/restore, read/write sector, read address with real CRCs, write track so the drive's own `N:` format works), 80 tracks × 2 sides × 10 × 512-byte sectors; D81 attach/eject/new blank, changes written back |
 | Fast loading | Instant Load (KERNAL LOAD trap for drives 8/9, on by default) and automatic warp while a drive motor runs (Drive menu) |
 | Datasette | TAP v0/v1 playback into CIA1 FLAG at cycle precision, recording from the cassette write line (KERNAL SAVE to tape), TAP autostart (`LOAD` + `RUN`), Tape menu (insert/new/play/record/stop/rewind/eject), automatic warp while the tape motor runs, recordings written back to the .tap |
@@ -127,8 +127,7 @@ which adds more transfer protocols (Punter, XMODEM-CRC/1K). The terminal's sourc
 ## ROMs
 
 The Commodore ROMs are copyrighted and are not part of this repository. On first launch the
-app looks in `~/Library/Application Support/C64Emu/ROMs`, in a VICE installation
-(`/opt/homebrew/share/vice`, `/Applications/vice*`), or asks for a folder containing
+app looks in `~/Library/Application Support/C64Emu/ROMs` and otherwise asks for a folder containing
 `basic*.bin`, `kernal*.bin`, `chargen*.bin` (and optionally `dos1541*.bin`, `dos1581*.bin`).
 
 Preferred file names (files are matched by name prefix and must be exactly this size):

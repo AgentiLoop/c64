@@ -1,7 +1,7 @@
 import Foundation
 
 /// The Commodore ROM images. They are copyrighted and not shipped with the source; the
-/// loader looks in our Application Support folder, the app bundle and the usual shared ROM folders.
+/// loader looks in our Application Support folder and the app bundle.
 public struct ROMSet {
     public var basic: [UInt8]
     public var kernal: [UInt8]
@@ -26,21 +26,6 @@ public struct ROMSet {
     public static var searchDirectories: [URL] {
         var dirs = [userROMDirectory]
         if let res = Bundle.main.resourceURL { dirs.append(res.appendingPathComponent("ROMs")) }
-        for base in ["/opt/homebrew/share/vice", "/usr/local/share/vice", "/usr/share/vice"] {
-            dirs.append(URL(fileURLWithPath: base + "/C64"))
-            dirs.append(URL(fileURLWithPath: base + "/DRIVES"))
-            dirs.append(URL(fileURLWithPath: base + "/C128"))
-        }
-        if let apps = try? FileManager.default.contentsOfDirectory(atPath: "/Applications") {
-            for app in apps where app.lowercased().hasPrefix("vice") {
-                let p = "/Applications/" + app
-                for sub in ["", "/Contents/Resources/share/vice", "/share/vice"] {
-                    dirs.append(URL(fileURLWithPath: p + sub + "/C64"))
-                    dirs.append(URL(fileURLWithPath: p + sub + "/DRIVES"))
-                    dirs.append(URL(fileURLWithPath: p + sub + "/C128"))
-                }
-            }
-        }
         return dirs
     }
 

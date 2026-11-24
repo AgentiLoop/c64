@@ -255,8 +255,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         alert.messageText = "Commodore ROMs not found"
         alert.informativeText = """
         The C64 needs the original BASIC, KERNAL and CHARGEN ROM images (and optionally the \
-        1541 / 1581 drive ROMs). Choose a folder that contains them (for example VICE's C64 \
-        and DRIVES folders). They will be copied to:
+        1541 / 1581 drive ROMs). Choose the folder you keep them in \
+        and they will be copied to:
         \(ROMSet.userROMDirectory.path)
         """
         alert.addButton(withTitle: "Choose Folder…")
@@ -361,6 +361,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             mfmDisk = image
             diskURL = url
             runner.perform { $0.drive8?.insert(mfm: image) }
+        case "crt":
+            do {
+                let cart = try Cartridge(crt: bytes)
+                // In a C128 the KERNAL sees GAME/EXROM and starts C64 mode, as on the real machine.
+                runner.perform { $0.attachCartridge(cart) }
+            } catch {
+                let alert = NSAlert()
+                alert.messageText = "Can't use this cartridge"
+                if case Cartridge.LoadError.unsupportedType(let t) = error {
+                    alert.informativeText = "\(url.lastPathComponent): cartridge type \(t) is not supported. Supported: " +
+                        Cartridge.supportedTypes.sorted { $0.key < $1.key }.map(\.value).joined(separator: ", ") + "."
+                } else {
+                    alert.informativeText = "\(url.lastPathComponent) is not a valid CRT file."
+                }
+                alert.runModal()
+                return
+            }
         case "d71":
             guard runner.c64.drive8 != nil, let image = D71Image(data: bytes) else {
                 let alert = NSAlert()
@@ -762,6 +779,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.title = baseTitle
     }
 
+    /// Pulls the cartridge and restarts the machine (as a C128 again if that is the chosen model).
+    @objc func removeCartridge(_ sender: Any?) {
+        let c128 = UserDefaults.standard.string(forKey: "Model") == "c128" ? ROMSet.load()?.c128 : nil
+        let boot80 = UserDefaults.standard.bool(forKey: "C128Boot80")
+        runner.perform { c64 in
+            c64.attachCartridge(nil)
+            if let c128, !c64.isC128 { c64.setC128(c128); c64.key4080Down = boot80 }
+        }
+        updateModelItems(c128: c128 != nil)
+    }
+
     @objc func pasteText(_ sender: Any?) {
         guard let text = NSPasteboard.general.string(forType: .string) else { return }
         runner.perform { $0.queueTyping(text) }
@@ -942,6 +970,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         add("File", [
             mi("Open / Autostart…", #selector(openDocument(_:)), "o"),
             mi("Save Screenshot", #selector(saveScreenshot(_:)), "s", [.command, .shift]),
+            mi("Remove Cartridge", #selector(removeCartridge(_:))),
             .separator(),
             mi("Close Window", #selector(NSWindow.performClose(_:)), "w"),
         ])

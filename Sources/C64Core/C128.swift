@@ -41,6 +41,8 @@ final class C128Memory {
     /// The 8502 has not run since reset: its reset vector is fetched when the Z80 first hands over.
     var needs8502Reset = true
     public var z80Active: Bool { mcr & 1 == 0 }
+    /// GAME (bit 4) and EXROM (bit 5) from the expansion port as read in $D505 (1 = not pulled low).
+    var cartLines: UInt8 = 0x30
     /// VIC-IIe $D02F: K0–K2 drive the extra keyboard lines (0 = scanned).
     var keyLines: UInt8 = 0xFF
     /// The 8563 VDC (80-column chip).
@@ -86,7 +88,7 @@ final class C128Memory {
         switch reg {
         case 0: return cr
         case 1...4: return pcr[reg - 1]
-        case 5: return (mcr & 0x09) | (key4080Down ? 0 : 0x80) | 0x30 | 0x06   // C128 mode, no cartridge
+        case 5: return (mcr & 0x09) | (key4080Down ? 0 : 0x80) | cartLines | 0x06   // C64 cartridge lines
         case 6: return rcr | 0x30
         case 7: return p0l
         case 8: return p0h | 0xF0

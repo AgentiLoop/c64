@@ -169,6 +169,15 @@ public final class C64: CPUBus {
     public var cassetteMotor: Bool { (portData & portDDR & 0x20) == 0 && portDDR & 0x20 != 0 }
     /// Extra devices clocked with the machine (drives, datasette).
     public var clockedDevices: [(C64) -> Void] = []
+    /// Cartridge in the expansion port (C64 mode; a C128 sees its GAME/EXROM lines and goes to C64 mode).
+    public private(set) var cartridge: Cartridge? { didSet { cartU = cartridge.map(Unmanaged.passUnretained) } }
+    private var cartU: Unmanaged<Cartridge>?
+
+    /// Plugs in (or with nil removes) a cartridge and resets the machine, like power-cycling.
+    public func attachCartridge(_ c: Cartridge?) {
+        cartridge = c
+        reset()
+    }
     /// Cycle count at the last reset.
     public private(set) var resetCycle: UInt64 = 0
     /// PETSCII bytes waiting to be fed into the keyboard buffer.
@@ -243,6 +252,9 @@ public final class C64: CPUBus {
     @inline(__always) func vicFetch(_ a: UInt16) -> UInt8 {
         let addr = Int(a)
         if let m = c128U { return m._withUnsafeGuaranteedRef { vicRead128($0, addr) } }
+        if let c = cartU, addr & 0x3000 == 0x3000, c._withUnsafeGuaranteedRef({ $0.mode == .ultimax }) {
+            return c._withUnsafeGuaranteedRef { $0.readROMH(0x1000 | (addr & 0x0FFF)) }   // Ultimax: VIC sees ROMH
+        }
         if vicBank & 1 == 0 && addr & 0x3000 == 0x1000 { return chargen[addr & 0x0FFF] }
         return ram[vicBank << 14 | addr]
     }
@@ -261,7 +273,9 @@ public final class C64: CPUBus {
         drive8?.reset()
         drive9?.reset()
         swiftLink?.reset()
+        cartridge?.reset()
         c128?.reset()
+        c128?.cartLines = 0x30 & ~((cartridge?.gameLow ?? false ? 0x10 : 0) | (cartridge?.exromLow ?? false ? 0x20 : 0))
         if c128 == nil { cpu.reset() }                      // a C128 starts on the Z80
         irqSampled = false; nmiSampled = false
         resetCycle = cycles
@@ -319,6 +333,7 @@ public final class C64: CPUBus {
         if !clockedDevices.isEmpty { for d in clockedDevices { d(self) } }
         if let d = drive8U, !drive8Is1581 { d._withUnsafeGuaranteedRef { $0.clockC64Cycle() } }
         if let d = drive9U { d._withUnsafeGuaranteedRef { $0.clockC64Cycle() } }
+        if let c = cartU { c._withUnsafeGuaranteedRef { $0.tick() } }
         if datasette.mode == .playing { datasette.tick(motor: cassetteMotor, cia: cia1) }
         cycles &+= 1
         todCounter += 1
@@ -375,6 +390,7 @@ public final class C64: CPUBus {
     public func peek(_ address: UInt16) -> UInt8 {
         let a = Int(address)
         if a >= 2, let m = c128U { return m._withUnsafeGuaranteedRef { peek128($0, a) } }
+        if a >= 0x1000, let c = cartU, let v = c._withUnsafeGuaranteedRef({ cartPeek($0, a) }) { return v }
         switch a >> 12 {
         case 0x0:
             if a == 0 { return portDDR }
@@ -409,6 +425,10 @@ public final class C64: CPUBus {
             return
         }
         if let m = c128U { m._withUnsafeGuaranteedRef { poke128($0, a, value) }; return }
+        if a >= 0x1000, let c = cartU, c._withUnsafeGuaranteedRef({ $0.mode == .ultimax }) {
+            if a >> 12 == 0xD { writeIO(a, value) }                 // Ultimax: only I/O and the low 4K
+            return
+        }
         if a >> 12 == 0xD && (loram || hiram) && charen {
             writeIO(a, value)
             return
@@ -416,7 +436,30 @@ public final class C64: CPUBus {
         ram[a] = value
     }
 
+    /// What the cartridge puts on the bus at `a` (nil: the normal C64 map applies).
+    @inline(__always) func cartPeek(_ c: Cartridge, _ a: Int) -> UInt8? {
+        switch c.mode {
+        case .off: return nil
+        case .ultimax:
+            switch a >> 12 {
+            case 0x8, 0x9: return c.readROML(a)
+            case 0xD: return readIO(a)
+            case 0xE, 0xF: return c.readROMH(a)
+            default: return 0xFF                                   // open bus
+            }
+        case .k8:
+            return a >> 13 == 4 && loram && hiram ? c.readROML(a) : nil
+        case .k16:
+            if a >> 13 == 4 && loram && hiram { return c.readROML(a) }
+            if a >> 13 == 5 && hiram { return c.readROMH(a) }
+            return nil
+        }
+    }
+
     func readIO(_ a: Int) -> UInt8 {
+        if a >> 9 == 0x6F, let c = cartU {                         // $DE00-$DFFF
+            return c._withUnsafeGuaranteedRef { a >> 8 == 0xDE ? $0.io1Read(a) : $0.io2Read(a) }
+        }
         switch a >> 8 {
         case 0xD0...0xD3: return vic.read(a)
         case 0xD4...0xD7: return sid.read(a & 0x1F)
@@ -429,6 +472,10 @@ public final class C64: CPUBus {
     }
 
     func writeIO(_ a: Int, _ v: UInt8) {
+        if a >> 9 == 0x6F, let c = cartU {
+            c._withUnsafeGuaranteedRef { if a >> 8 == 0xDE { $0.io1Write(a, v) } else { $0.io2Write(a, v) } }
+            return
+        }
         switch a >> 8 {
         case 0xD0...0xD3: vic.write(a, v)
         case 0xD4...0xD7: sid.write(a & 0x1F, v)
