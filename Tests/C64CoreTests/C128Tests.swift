@@ -627,3 +627,25 @@ extension C128Tests {
         XCTAssertTrue(screen(c64).contains("BASIC BYTES FREE"), screen(c64))
     }
 }
+
+extension C128Tests {
+    /// GO64 keeps the C128's 1571 (as in a C128D) and the disk in it.
+    func testGO64Keeps1571() throws {
+        guard let roms = ROMSet.load(), let c128 = roms.c128, roms.drive1571 != nil else { throw XCTSkip("ROMs") }
+        let c64 = C64(roms: roms)
+        c64.setC128(c128)
+        XCTAssertEqual(c64.drive8?.is1571, true)
+        let d = D64Image.blank(name: "KEEP", id: "01")
+        c64.drive8!.insert(GCRDisk(d64: d))
+        for _ in 0..<300 { c64.runFrame() }
+        c64.queueTyping("GO64\nY\n")
+        for _ in 0..<300 { c64.runFrame() }
+        XCTAssertFalse(c64.isC128)
+        XCTAssertEqual(c64.drive8?.is1571, true)
+        XCTAssertNotNil(c64.drive8?.disk)
+        c64.queueTyping("LOAD\"$\",8\n")
+        for _ in 0..<600 { c64.runFrame() }
+        XCTAssertTrue(screen(c64).contains("READY."), screen(c64))
+        XCTAssertFalse(screen(c64).contains("ERROR"), screen(c64))
+    }
+}

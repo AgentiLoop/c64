@@ -151,7 +151,7 @@ extension C64 {
         guard let m = c128, m.go64Requested else { return }
         c128 = nil
         wireFastSerial()
-        setDrive8Is1571(use1571OnC64)
+        // Drive 8 stays as it is: a C128D's 1571 is still a 1571 in C64 mode (the disk stays in too).
         reset()
         onModelChanged?()
     }
