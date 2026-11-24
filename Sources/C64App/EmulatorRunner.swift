@@ -71,6 +71,9 @@ final class EmulatorRunner {
     /// Copies the selected picture to the front buffer and schedules at most one main-thread refresh.
     private func publish(as80: Bool) {
         lock.lock()
+        // An unchanged picture (an idle READY screen between cursor blinks) isn't handed over again,
+        // so the view has nothing to upload or draw.
+        if !as80 && !frontIs80 && c64.vic.frameEquals(frontBuffer) { lock.unlock(); return }
         publishedFrames &+= 1
         frontIs80 = as80
         if as80 {

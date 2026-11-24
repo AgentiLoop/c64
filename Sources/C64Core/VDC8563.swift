@@ -24,11 +24,14 @@ import Foundation
 public final class VDC8563 {
     public static let dotClock = 16_000_000
 
-    public var regs = [UInt8](repeating: 0, count: 64)
+    public var regs = [UInt8](repeating: 0, count: 64) { didSet { updateLineThreshold() } }
     public var ram = [UInt8](repeating: 0, count: 0x10000)
     var select: UInt8 = 0
     /// CPU clock, for converting CPU cycles to VDC dots.
-    var clockHz = C64.palClock
+    var clockHz = C64.palClock { didSet { updateLineThreshold() } }
+    /// `lineDots * clockHz`, kept up to date so the per-cycle beam step doesn't recompute it.
+    private var lineThreshold = 1
+    private func updateLineThreshold() { lineThreshold = max(1, lineDots * clockHz) }
 
     // Beam.
     var dotAcc = 0
@@ -170,9 +173,8 @@ public final class VDC8563 {
     @inline(__always) func tick(cycle: UInt64) {
         now = cycle
         dotAcc += VDC8563.dotClock
-        let threshold = lineDots * clockHz
-        if dotAcc >= threshold {
-            dotAcc -= threshold
+        if dotAcc >= lineThreshold {
+            dotAcc -= lineThreshold
             endOfLine()
         }
     }

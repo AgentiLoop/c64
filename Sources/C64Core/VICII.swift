@@ -1,6 +1,7 @@
 // MOS 6569 (PAL) / 6567R8 (NTSC) VIC-II. Cycle-stepped: badlines, sprite DMA, border flip-flops, raster IRQ,
 // all graphics modes, sprites with collisions. Draws 8 pixels per cycle so mid-line register
 // changes (raster bars, tape loading stripes) show up.
+import Foundation
 
 /// TV standard of the machine: PAL (UK/Europe/Australia) or NTSC (USA/Canada/Japan).
 public enum VideoStandard: String, CaseIterable {
@@ -29,6 +30,13 @@ public final class VICII {
         return p
     }()
     /// A copy of the current picture (384×272, 0xAARRGGBB).
+    /// True if `buffer` already holds exactly the current picture.
+    public func frameEquals(_ buffer: [UInt32]) -> Bool {
+        let n = VICII.screenWidth * VICII.screenHeight
+        guard buffer.count == n else { return false }
+        return buffer.withUnsafeBufferPointer { memcmp($0.baseAddress!, pixels, n * 4) == 0 }
+    }
+
     /// Copies the current picture into `buffer` (resized to 384×272 if needed) without allocating.
     public func copyFrame(into buffer: inout [UInt32]) {
         let n = VICII.screenWidth * VICII.screenHeight

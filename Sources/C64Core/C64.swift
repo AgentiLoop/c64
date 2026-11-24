@@ -276,7 +276,7 @@ public final class C64: CPUBus {
         let cpu = self.cpu!
         while vic.frameCount == start {
             cpu.step()
-            if c128 != nil { checkGo64() }
+            if let m = c128U, m._withUnsafeGuaranteedRef({ $0.go64Requested }) { checkGo64() }
         }
         feedTypeQueue()
     }
@@ -288,7 +288,7 @@ public final class C64: CPUBus {
         while cycles < end {
             let frame = vic.frameCount
             cpu.step()
-            if c128 != nil { checkGo64() }
+            if let m = c128U, m._withUnsafeGuaranteedRef({ $0.go64Requested }) { checkGo64() }
             if vic.frameCount != frame { feedTypeQueue() }
         }
     }
