@@ -333,6 +333,7 @@ public final class C64: CPUBus {
         if !clockedDevices.isEmpty { for d in clockedDevices { d(self) } }
         if let d = drive8U, !drive8Is1581 { d._withUnsafeGuaranteedRef { $0.clockC64Cycle() } }
         if let d = drive9U { d._withUnsafeGuaranteedRef { $0.clockC64Cycle() } }
+        iec.latchHostLines()
         if let c = cartU { c._withUnsafeGuaranteedRef { $0.tick() } }
         if datasette.mode == .playing { datasette.tick(motor: cassetteMotor, cia: cia1) }
         cycles &+= 1

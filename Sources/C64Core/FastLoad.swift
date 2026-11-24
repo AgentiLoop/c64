@@ -43,6 +43,9 @@ extension C64 {
         guard let entry = entries.first(where: { $0.type & 0x07 != 0 && C64.matches($0.name, pattern) }) else {
             return false   // not found: let the drive report the error
         }
+        // DOS never puts file data on the directory track (18); a file starting there is a
+        // loader trick (e.g. several names sharing one sector that runs drive code): real drive.
+        if entry.track == 18 { return false }
         let file = read(entry)
         guard file.count >= 2 else { return false }
 

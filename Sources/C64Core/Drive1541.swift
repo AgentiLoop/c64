@@ -72,8 +72,8 @@ public final class Drive1541: CPUBus, FastSerialDevice {
         }
         via1.portBIn = { [unowned(unsafe) self] in
             var v: UInt8 = 0x00          // bits 5/6 = 0: device number 8
-            if !self.iec.dataLine { v |= 0x01 }
-            if !self.iec.clockLine { v |= 0x04 }
+            if !self.iec.dataLineForDrive { v |= 0x01 }
+            if !self.iec.clockLineForDrive { v |= 0x04 }
             if self.atnAsserted { v |= 0x80 }
             return v
         }

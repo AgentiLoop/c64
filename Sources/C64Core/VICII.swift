@@ -109,8 +109,10 @@ public final class VICII {
     /// Called after an automatic change, so the machine can retune its clocks.
     public var onStandardChange: (() -> Void)?
     /// Set when, at the start of a line in this frame, a raster IRQ was armed for line 263 or later —
-    /// a line only PAL has.
+    /// a line only PAL has — while the CPU takes IRQs (loaders often leave junk in $D01A/$D011
+    /// with interrupts off; that isn't a program waiting for a PAL line).
     private var palHint = false
+    private var irqsTaken: Bool { host.map { !$0._withUnsafeGuaranteedRef { $0.cpu.i } } ?? true }
     private var palFrames = 0
     private var ntscFrames = 0
     private var quietFrames = 0
@@ -445,7 +447,7 @@ public final class VICII {
         if cycle > cyclesPerLine {
             cycle = 1
             raster += 1
-            if autoStandard && imr & 0x01 != 0 && rasterCompare >= 263 { palHint = true }
+            if autoStandard && imr & 0x01 != 0 && rasterCompare >= 263 && irqsTaken { palHint = true }
             if raster >= linesPerFrame {
                 if standard == .ntsc { fillUnusedLines() }
                 raster = 0
