@@ -2,8 +2,8 @@
 
 ## Created by Todd Bruss
 
-Native Swift/AppKit emulator of a Commodore 64 (PAL or NTSC), with true emulation of the 1541
-and 1581 disk drives and the Datasette. The only dependency is [AutoUpdateKit](https://github.com/AgentiLoop/AutoUpdateKit),
+Native Swift/AppKit emulator of a Commodore 64 (NTSC or PAL) and Commodore 128 (with the Z80 and
+CP/M 3.0), with true emulation of the 1541, 1571 and 1581 disk drives and the Datasette. The only dependency is [AutoUpdateKit](https://github.com/AgentiLoop/AutoUpdateKit),
 which keeps the app up to date from GitHub releases.
 
 | Website | Download | Built with |
@@ -24,8 +24,8 @@ which keeps the app up to date from GitHub releases.
    Universal app (Apple silicon and Intel), signed with Developer ID and notarized by Apple.
 2. Supply the Commodore ROMs (see [ROMs](#roms)).
 3. **Drag and drop a `.d64` disk image onto the C64 screen** to insert it in drive 8 and autostart it
-   (`LOAD"*",8,1` + `RUN`). `.d81`, `.prg`, `.t64` and `.tap` files work the same way, or use the
-   Drive and Tape menus.
+   (`LOAD"*",8,1` + `RUN`). `.g64`, `.d71`, `.d81`, `.prg`, `.p00`, `.t64`, `.tap` and `.crt` files work
+   the same way, or use the Drive and Tape menus.
 
 Requires macOS 14 or later.
 
@@ -34,8 +34,10 @@ Requires macOS 14 or later.
 The same app is also a Commodore 128. **Machine ▸ Commodore 128** restarts it in C128 mode with
 BASIC 7.0, 128K, the 40-column VIC-II screen and the 80-column 8563 VDC screen.
 **View ▸ C128 Display** (⌘4 / ⌘5 / ⌘6) switches the window between the two video outputs, like the
-input switch on a monitor. It needs the C128 ROMs (see [ROMs](#roms)); the details are in the
-[Status](#status) table.
+input switch on a monitor. **CP/M 3.0** runs on the emulated Z80: boot a CP/M system disk, and
+use raw `.img` MFM disks (Kaypro, IBM) in the 1571. Hold Option while the app starts, or use
+Machine ▸ Reset Holding C= (⌥⌘R), to start a C128 in C64 mode. It needs the C128 ROMs
+(see [ROMs](#roms)); the details are in the [Status](#status) table.
 
 <table>
   <tr>
@@ -53,15 +55,15 @@ input switch on a monitor. It needs the C128 ROMs (see [ROMs](#roms)); the detai
 | Part | State |
 |------|-------|
 | 6510 CPU | Cycle-exact bus accesses, all documented + undocumented opcodes, passes Klaus Dormann's functional test |
-| Video standard | PAL (6569, 50 Hz, default) or NTSC (6567R8, 60 Hz) via Machine ▸ Video Standard; CPU, SID pitch, CIA clocks and drive timing follow; the KERNAL detects the machine itself |
-| Commodore 128 | Machine ▸ Commodore 128 boots C128 mode with BASIC 7.0 (122365 bytes free): 8722 MMU with 128K in two banks, common RAM, page 0/1 relocation, ROM/RAM configurations and the $FF00 registers; as on the real machine the Z80 runs first (its boot BIOS from the KERNAL ROM) and hands the bus to the 8502 through MMU $D505. 40 columns on the VIC-II, and 80 columns on the 8563 VDC (text with attributes, alternate character set, underline, reverse, blinking cursor, bitmap mode, character width/height up to 16×32, smooth scrolling): the window shows whichever screen the C128 is using, so ESC X switches, and View ▸ C128 Display (Automatic ⌘4 / 40 Columns ⌘5 / 80 Columns ⌘6) picks the video output by hand, like the input switch on a monitor, for programs that ask you to switch; Machine ▸ C128 Starts in 80 Columns holds the 40/80 key down at reset; `GO64` switches to C64 mode (the menu follows; drive 8 stays a 1571 with its disk, as on a C128D; the next launch boots the C128 again). `FAST`/`SLOW` switch the 8502 between 2 MHz and 1 MHz ($D030 bit 0; the 40-column picture is not meaningful while fast, as on the real machine). With the 1571 ROM, drive 8 is a true-emulated 1571 in C128 mode (as in a C128D): fast serial burst transfers over the CIA serial ports, 2 MHz, both heads, D71 images (read and written back); otherwise disk LOAD/SAVE work through the true-emulated 1541 (Instant Load is C64-only); at start-up the KERNAL checks drive 8 for a boot disk, as a real C128 does, and goes to READY. without one. **CP/M 3.0**: the Z80 (all documented and common undocumented instructions; passes ZEXDOC) and the 8502 switch through $D505 bit 0 as on the real machine, so a CP/M system disk (D64/G64, GCR) boots with `BOOT` or at power-on and runs on the 40-column screen (80 columns with the 40/80 key down; switch the display with ⌘6). MFM disks for CP/M work on the 1571's WD1770: open a raw 40-track `.img` (Kaypro II/IV, IBM-8 SS/DS CP/M-86, IBM-9; recognised by size, changes written back); when two formats look alike CP/M shows them on the status line, pick one with the C128's top-row ← → keys (End / Page Down on the Mac) and RETURN |
+| Video standard | NTSC (6567R8, 60 Hz, default), PAL (6569, 50 Hz) or Auto via Machine ▸ Video Standard; Auto switches to PAL live when a program needs PAL-only raster lines or cycle-counted PAL raster bars; CPU, SID pitch, CIA clocks and drive timing follow; the KERNAL detects the machine itself |
+| Commodore 128 | Machine ▸ Commodore 128 boots C128 mode with BASIC 7.0 (122365 bytes free): 8722 MMU with 128K in two banks, common RAM, page 0/1 relocation, ROM/RAM configurations and the $FF00 registers; as on the real machine the Z80 runs first (its boot BIOS from the KERNAL ROM) and hands the bus to the 8502 through MMU $D505. 40 columns on the VIC-II, and 80 columns on the 8563 VDC (text with attributes, alternate character set, underline, reverse, blinking cursor, bitmap mode, character width/height up to 16×32, smooth scrolling): the window shows whichever screen the C128 is using, so ESC X switches, and View ▸ C128 Display (Automatic ⌘4 / 40 Columns ⌘5 / 80 Columns ⌘6) picks the video output by hand, like the input switch on a monitor, for programs that ask you to switch; Machine ▸ C128 Starts in 80 Columns holds the 40/80 key down at reset; `GO64` switches to C64 mode (the menu follows; drive 8 stays a 1571 with its disk, as on a C128D; the next launch boots the C128 again); holding Option while the app starts, or Machine ▸ Reset / Hard Reset Holding C= (⌥⌘R / ⌥⇧⌘R, shown while Option is held), holds C= at power-on so the C128 starts in C64 mode. The extra C128 keys (HELP, ESC, TAB, ALT, LINE FEED, NO SCROLL, keypad and top-row cursor keys) are scanned through $D02F. `FAST`/`SLOW` switch the 8502 between 2 MHz and 1 MHz ($D030 bit 0; the 40-column picture is not meaningful while fast, as on the real machine). With the 1571 ROM, drive 8 is a true-emulated 1571 in C128 mode (as in a C128D): fast serial burst transfers over the CIA serial ports, 2 MHz, both heads, D71 images (read and written back); otherwise disk LOAD/SAVE work through the true-emulated 1541 (Instant Load is C64-only); at start-up the KERNAL checks drive 8 for a boot disk, as a real C128 does, and goes to READY. without one. **CP/M 3.0**: the Z80 (all documented and common undocumented instructions; passes ZEXDOC) and the 8502 switch through $D505 bit 0 as on the real machine, so a CP/M system disk (D64/G64, GCR) boots with `BOOT` or at power-on and runs on the 40-column screen (80 columns with the 40/80 key down; switch the display with ⌘6). MFM disks for CP/M work on the 1571's WD1770: open a raw 40-track `.img` (Kaypro II/IV, IBM-8 SS/DS CP/M-86, IBM-9; recognised by size, changes written back); when two formats look alike CP/M shows them on the status line, pick one with the C128's top-row ← → keys (End / Page Down on the Mac) and RETURN |
 | VIC-II (6569) | Cycle-stepped: badlines, sprite DMA/cycle stealing, border flip-flops, raster IRQ, all text/bitmap modes, sprites + collisions |
 | SID (6581) | 3 voices, all waveforms, sync/ring, ADSR with real rate tables, resonant multimode filter, digi (volume DC) |
 | CIA 6526 ×2 | Timers A/B, TOD, ICR, keyboard/joystick ports, VIC bank, IEC lines, NMI |
 | Keyboard | Mac keyboard → C64 matrix (symbolic punctuation), RESTORE, joystick on numpad / cursor keys / game controllers |
 | Drive light | Round light at the left of the title bar: gray idle, green reading, orange writing a file, yellow appending, red deleting (scratch), purple formatting (`N0:NAME,ID`), pink erasing (`N0:NAME`, clears the directory); hover for the name |
 | 1541 drive | True emulation: drive 6502 running the original DOS ROM, 2× VIA 6522, stepper head, GCR disk at the correct zone speeds; reads and writes |
-| Media | D64 (autostart `LOAD"*",8,1` + `RUN`, Drive menu attach/eject/new blank disk, changes written back to the .d64), G64 raw GCR images with half-tracks (for copy-protected disks; changes written back as G64), PRG and P00 autostart, CRT cartridges (normal 8K/16K/Ultimax, Ocean, Magic Desk, EasyFlash, C64 Game System, Dinamic, Simons' BASIC, Epyx FastLoad; File ▸ Remove Cartridge; in C128 mode a cartridge starts C64 mode as on the real machine). T64 autostart, D81 on drive 9 (autostart `LOAD"*",9,1` + `RUN`) |
+| Media | D64 (autostart `LOAD"*",8,1` + `RUN`, Drive menu attach/eject/new blank disk, changes written back to the .d64), G64 raw GCR images with half-tracks (for copy-protected disks; changes written back as G64), D71 double-sided 1571 images (C128 mode), raw `.img` MFM CP/M disks in the 1571, PRG and P00 autostart, CRT cartridges (normal 8K/16K/Ultimax, Ocean, Magic Desk, EasyFlash, C64 Game System, Dinamic, Simons' BASIC, Epyx FastLoad; File ▸ Remove Cartridge; in C128 mode a cartridge starts C64 mode as on the real machine). T64 autostart, D81 on drive 9 (autostart `LOAD"*",9,1` + `RUN`) |
 | 1581 drive (3.5") | True emulation as device 9: 2 MHz 6502 running the original 1581 DOS ROM, 8520 CIA, WD1772 controller (seek/step/restore, read/write sector, read address with real CRCs, write track so the drive's own `N:` format works), 80 tracks × 2 sides × 10 × 512-byte sectors; D81 attach/eject/new blank, changes written back |
 | Fast loading | Instant Load (KERNAL LOAD trap for drives 8/9, on by default) and automatic warp while a drive motor runs (Drive menu) |
 | Datasette | TAP v0/v1 playback into CIA1 FLAG at cycle precision, recording from the cassette write line (KERNAL SAVE to tape), TAP autostart (`LOAD` + `RUN`), Tape menu (insert/new/play/record/stop/rewind/eject), automatic warp while the tape motor runs, recordings written back to the .tap |
@@ -129,7 +131,8 @@ which adds more transfer protocols (Punter, XMODEM-CRC/1K). The terminal's sourc
 
 The Commodore ROMs are copyrighted and are not part of this repository. On first launch the
 app looks in `~/Library/Application Support/C64Emu/ROMs` and otherwise asks for a folder containing
-`basic*.bin`, `kernal*.bin`, `chargen*.bin` (and optionally `dos1541*.bin`, `dos1581*.bin`).
+`basic*.bin`, `kernal*.bin`, `chargen*.bin` (and optionally `dos1541*.bin`, `dos1571*.bin`, `dos1581*.bin`
+and the C128 ROMs below).
 
 Preferred file names (files are matched by name prefix and must be exactly this size):
 
@@ -178,6 +181,8 @@ C64_SLOW_TESTS=1 swift test -c release -Xswiftc -enable-testing --filter testFor
 | Numpad 8/2/4/6, 0 or Right Option | Joystick (port 2 by default, ⌘K swaps) |
 | ⌘V | Paste text as typing |
 | ⌘J | Warp mode |
+| ⌘R / ⌘⇧R | Reset / hard reset |
+| ⌥⌘R / ⌥⇧⌘R | Reset / hard reset holding C= (a C128 starts in C64 mode); hold Option at launch for the same |
 | ⌘1 / ⌘2 / ⌘3 | View: full border / small border / no border |
 | ⌘4 / ⌘5 / ⌘6 | View: C128 display automatic / 40 columns (VIC-II) / 80 columns (VDC), like the input switch on a monitor |
 | ⌘D / ⌘E / ⌘N | Attach / eject / create D64 in drive 8 |

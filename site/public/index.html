@@ -131,7 +131,9 @@ LOAD "C64 FOR MACOS",8,1
   <p>The same app is also a Commodore 128. Choose <strong>Machine &#9656; Commodore 128</strong> and it restarts in C128 mode
      with BASIC 7.0, 128K, the 40-column VIC-II screen and the 80-column 8563 VDC screen.
      <strong>View &#9656; C128 Display</strong> (&#8984;4 / &#8984;5 / &#8984;6) switches the window between the two video outputs,
-     like the input switch on a monitor. Needs the C128 ROMs (see below).</p>
+     like the input switch on a monitor. <strong>CP/M 3.0</strong> runs on the emulated Z80: boot a CP/M system disk,
+     and use raw <code>.img</code> MFM disks (Kaypro, IBM) in the 1571. Hold Option while the app starts to begin in C64 mode.
+     Needs the C128 ROMs (see below).</p>
   <div class="shots">
     <figure>
       <img src="c128-bucketwars-title.png" width="1658" height="1164" loading="lazy"
@@ -150,13 +152,15 @@ LOAD "C64 FOR MACOS",8,1
     <tr><th>6510 CPU</th><td>Cycle-exact bus accesses, all documented and undocumented opcodes; passes Klaus Dormann's functional test.</td></tr>
     <tr><th>VIC-II</th><td>Cycle-stepped: badlines, sprite DMA, border flip-flops, raster IRQ, all text and bitmap modes, sprite collisions.</td></tr>
     <tr><th>SID 6581</th><td>3 voices, all waveforms, sync/ring, ADSR with real rate tables, resonant multimode filter, digis.</td></tr>
-    <tr><th>PAL / NTSC</th><td>6569 (50 Hz) or 6567R8 (60 Hz); CPU, SID pitch, CIA clocks and drive timing follow.</td></tr>
+    <tr><th>NTSC / PAL</th><td>6567R8 (60 Hz, default) or 6569 (50 Hz), or Auto: switches to PAL live when a program needs it. CPU, SID pitch, CIA clocks and drive timing follow.</td></tr>
     <tr><th>1541 drive</th><td>Drive 6502 running the original DOS ROM, two VIA 6522s, stepper head, GCR at the correct zone speeds. Reads and writes, so fast loaders and copy protection behave like the real thing.</td></tr>
+    <tr><th>1571 drive</th><td>Drive 8 in C128 mode (optional in C64 mode): 2 MHz, both heads, fast serial burst transfers, D71 images, and a WD1770 for MFM CP/M disks.</td></tr>
     <tr><th>1581 drive</th><td>Device 9: 2 MHz 6502, 8520 CIA and WD1772 controller with the original 1581 DOS; D81 images, including formatting.</td></tr>
     <tr><th>Datasette</th><td>TAP playback and recording at cycle precision, with automatic warp while the motor runs.</td></tr>
     <tr><th>Fast loading</th><td>Instant Load copies KERNAL loads straight from the disk image; automatic warp while a drive motor runs.</td></tr>
-    <tr><th>Media</th><td>D64, D81, PRG, T64 and TAP. Drag a file onto the window and it autostarts. Changes are written back to the image.</td></tr>
-    <tr><th>Commodore 128</th><td>Machine &#9656; Commodore 128 boots C128 mode with BASIC 7.0: 128K and the 8722 MMU, 40 columns on the VIC-II and 80 columns on the 8563 VDC (ESC X switches; View &#9656; C128 Display picks the 40- or 80-column output by hand, like the input switch on a monitor), FAST 2 MHz mode, GO64, disk boot. Needs the C128 ROMs (see below). No CP/M.</td></tr>
+    <tr><th>Media</th><td>D64, G64 (raw GCR, for copy-protected disks), D71, D81, CP/M <code>.img</code>, PRG, P00, T64, TAP and CRT cartridges (Ocean, Magic Desk, EasyFlash, Epyx FastLoad and more). Drag a file onto the window and it autostarts. Changes are written back to the image.</td></tr>
+    <tr><th>Drive light</th><td>A light in the title bar: green reading, orange writing, yellow appending, red deleting, purple formatting, pink erasing.</td></tr>
+    <tr><th>Commodore 128</th><td>Machine &#9656; Commodore 128 boots C128 mode with BASIC 7.0: 128K and the 8722 MMU, 40 columns on the VIC-II and 80 columns on the 8563 VDC (ESC X switches; View &#9656; C128 Display picks the 40- or 80-column output by hand, like the input switch on a monitor), FAST 2 MHz mode, GO64, disk boot, the extra C128 keys. CP/M 3.0 on the Z80 (passes ZEXDOC). Needs the C128 ROMs (see below).</td></tr>
     <tr><th>Modem</th><td>Dial Commodore and PC BBSes over telnet from the user port, SwiftLink or Turbo232 (up to 230,400 baud). Built-in terminal with PETSCII and ASCII/ANSI modes and XMODEM download/upload.</td></tr>
   </table>
 
@@ -164,12 +168,12 @@ LOAD "C64 FOR MACOS",8,1
   <p>Download <code>C64.app.zip</code> from the releases page, unzip it and open it. It's a Universal app (Apple silicon and Intel),
      signed with Developer ID and notarized by Apple. Requires macOS 14 or later.</p>
   <p><strong>Drag and drop a <code>.d64</code> disk image onto the C64 screen</strong> to insert it in drive 8 and autostart it
-     (<code>LOAD"*",8,1</code> + <code>RUN</code>). <code>.d81</code>, <code>.prg</code>, <code>.t64</code> and <code>.tap</code> files work the same way.</p>
+     (<code>LOAD"*",8,1</code> + <code>RUN</code>). <code>.g64</code>, <code>.d71</code>, <code>.d81</code>, <code>.prg</code>, <code>.p00</code>, <code>.t64</code>, <code>.tap</code> and <code>.crt</code> files work the same way.</p>
   <p>Need something to test with? Download <a href="lasereaglev3-ToddBruss-148612-Demonger7.d64" download><strong>Laser Eagle v3</strong></a>
      (<code>.d64</code>, 171 KB), a game by Todd Bruss, free to play &mdash; then drop it onto the C64 screen.</p>
   <p>The Commodore ROMs are copyrighted and not included. On first launch the app looks in
-     <code>~/Library/Application Support/C64Emu/ROMs</code> and in a VICE installation, or asks you for a folder with
-     <code>basic</code>, <code>kernal</code> and <code>chargen</code> ROM files (and optionally the 1541/1581 DOS ROMs).</p>
+     <code>~/Library/Application Support/C64Emu/ROMs</code>, or otherwise asks you for a folder with
+     <code>basic</code>, <code>kernal</code> and <code>chargen</code> ROM files (and optionally the 1541/1571/1581 DOS ROMs and the C128 ROMs).</p>
   <p class="roms">Preferred file names (files are matched by name prefix and must be exactly this size):</p>
   <table class="roms">
     <tr class="group"><td colspan="4">Commodore 64</td></tr>
@@ -206,12 +210,16 @@ open build/C64.app</pre>
     <tr><th>F1&ndash;F8</th><td>F1&ndash;F8</td></tr>
     <tr><th>Backspace / Fwd Delete</th><td>DEL / INST</td></tr>
     <tr><th>&#8984;V</th><td>Paste text as typing</td></tr>
+    <tr><th>Help, F9&ndash;F13</th><td>C128 mode: HELP, ESC, TAB, ALT, LINE FEED, NO SCROLL</td></tr>
+    <tr><th>End / Page Down</th><td>C128 mode: the top-row &larr; / &rarr; cursor keys (CP/M uses them to pick a disk format)</td></tr>
 
     <tr class="group"><td colspan="2">Joystick</td></tr>
     <tr><th>Numpad 8/2/4/6, 0 or Right Option</th><td>Joystick (port 2 by default, &#8984;K swaps ports)</td></tr>
 
     <tr class="group"><td colspan="2">Machine &amp; view</td></tr>
     <tr><th>&#8984;J</th><td>Warp mode</td></tr>
+    <tr><th>&#8984;R / &#8984;&#8679;R</th><td>Reset / hard reset</td></tr>
+    <tr><th>&#8997;&#8984;R / &#8997;&#8679;&#8984;R</th><td>Reset / hard reset holding C= (a C128 starts in C64 mode)</td></tr>
     <tr><th>&#8984;P</th><td>Pause / resume (handy for screenshots)</td></tr>
     <tr><th>&#8984;1 / &#8984;2 / &#8984;3</th><td>Full border / small border / no border</td></tr>
     <tr><th>&#8984;4 / &#8984;5 / &#8984;6</th><td>C128 display: automatic / 40 columns (VIC-II) / 80 columns (VDC)</td></tr>
