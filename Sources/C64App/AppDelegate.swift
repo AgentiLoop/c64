@@ -32,6 +32,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// FPS / refresh-rate readout in the right corner of the title bar.
     let fpsLabel = NSTextField(labelWithString: "")
     let fpsAccessory = NSTitlebarAccessoryViewController()
+    /// Drive activity light at the left of the title bar: green while a drive's LED is on, gray otherwise.
+    let ledDot = NSView(frame: NSRect(x: 6, y: 8, width: 12, height: 12))
+    let ledAccessory = NSTitlebarAccessoryViewController()
     var fpsStart = 0.0, fpsEmulated = 0
     var statusTimer: Timer?
     var lastLED = false
@@ -117,6 +120,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         fpsAccessory.layoutAttribute = .trailing
         fpsAccessory.isHidden = !showFPS
         window.addTitlebarAccessoryViewController(fpsAccessory)
+        ledDot.wantsLayer = true
+        ledDot.layer?.cornerRadius = 6
+        ledDot.layer?.backgroundColor = NSColor.systemGray.cgColor
+        let ledBox = NSView(frame: NSRect(x: 0, y: 0, width: 24, height: 28))
+        ledBox.addSubview(ledDot)
+        ledAccessory.view = ledBox
+        ledAccessory.layoutAttribute = .leading
+        window.addTitlebarAccessoryViewController(ledAccessory)
         window.delegate = self
         view = EmulatorView(frame: NSRect(origin: .zero, size: size))
         view.runner = runner
@@ -188,7 +199,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if led != lastLED || tape != lastTape {
             lastLED = led
             lastTape = tape
-            window.title = (led ? "● " : "") + (tape ? "▶ " : "") + baseTitle
+            ledDot.layer?.backgroundColor = (led ? NSColor.systemGreen : NSColor.systemGray).cgColor
+            window.title = (tape ? "▶ " : "") + baseTitle
         }
     }
 
