@@ -67,10 +67,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard let roms = loadROMs() else { NSApp.terminate(nil); return }
         let c64 = C64(roms: roms)
         c64.fastLoad = UserDefaults.standard.object(forKey: "FastLoad") as? Bool ?? true
-        // NTSC unless PAL was chosen in the menu.
-        let savedStandard = UserDefaults.standard.string(forKey: "VideoStandard").flatMap(VideoStandard.init(rawValue:))
-        c64.standard = savedStandard ?? .ntsc
-        for item in standardItems { item.state = item.representedObject as? String == c64.standard.rawValue ? .on : .off }
+        // NTSC unless PAL or Auto was chosen in the menu.
+        let savedStandard = UserDefaults.standard.string(forKey: "VideoStandard")
+        c64.standard = savedStandard.flatMap(VideoStandard.init(rawValue:)) ?? .ntsc
+        c64.autoStandard = savedStandard == "auto"
+        let checkedStandard = c64.autoStandard ? "auto" : c64.standard.rawValue
+        for item in standardItems { item.state = item.representedObject as? String == checkedStandard ? .on : .off }
         c64.use1571OnC64 = UserDefaults.standard.bool(forKey: "C64Drive1571")
         if UserDefaults.standard.string(forKey: "Model") == "c128", let c128 = roms.c128 {
             c64.setC128(c128)
@@ -170,8 +172,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             let emulated = runner.emulatedFrames
             let elapsed = now - fpsStart
             let text = showFPS && fpsStart > 0
-                ? String(format: "%.1f fps · %@ %d Hz",
-                         Double(emulated - fpsEmulated) / elapsed,
+                ? String(format: "%.1f fps · %@%@ %d Hz",
+                         Double(emulated - fpsEmulated) / elapsed, runner.c64.autoStandard ? "Auto " : "",
                          runner.c64.standard == .pal ? "PAL" : "NTSC", runner.c64.mainsHz)
                 : ""
             fpsStart = now; fpsEmulated = emulated
@@ -531,20 +533,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     // MARK: - Video standard
 
-    /// Switches the machine between PAL and NTSC. This resets the C64, like swapping
-    /// the computer, so a confirmation is shown first.
+    /// Switches the machine between Auto, PAL and NTSC. This resets the C64, like swapping
+    /// the computer, so a confirmation is shown first. Auto starts as NTSC and changes to PAL
+    /// (and back) without a reset when the running program needs it.
     @objc func setVideoStandard(_ sender: NSMenuItem) {
-        guard let raw = sender.representedObject as? String, let std = VideoStandard(rawValue: raw),
-              sender.state != .on else { return }
+        guard let raw = sender.representedObject as? String, sender.state != .on else { return }
+        let auto = raw == "auto"
+        guard let std = auto ? .ntsc : VideoStandard(rawValue: raw) else { return }
+        let name = auto ? "Auto" : std == .pal ? "PAL" : "NTSC"
         let alert = NSAlert()
-        alert.messageText = "Switch to \(std == .pal ? "PAL" : "NTSC")?"
+        alert.messageText = "Switch to \(name)?"
         alert.informativeText = "The C64 will restart. Anything in memory that isn't saved will be lost."
-        alert.addButton(withTitle: "Restart as \(std == .pal ? "PAL" : "NTSC")")
+        alert.addButton(withTitle: "Restart as \(name)")
         alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         UserDefaults.standard.set(raw, forKey: "VideoStandard")
         for item in standardItems { item.state = item === sender ? .on : .off }
-        runner.perform { $0.standard = std }
+        runner.perform { $0.autoStandard = auto; $0.standard = std }
     }
 
     // MARK: - Border
@@ -881,10 +886,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         warpItem.state = UserDefaults.standard.bool(forKey: "Warp") ? .on : .off
         let muteItem = mi("Mute", #selector(toggleMute(_:)), "m", [.command, .shift])
         muteItem.state = UserDefaults.standard.bool(forKey: "Mute") ? .on : .off
-        standardItems = [("PAL (UK, Europe, Australia) — 50 Hz", "pal"), ("NTSC (USA, Canada, Japan) — 60 Hz", "ntsc")].map {
+        standardItems = [("Auto (Follows the Program) — 50/60 Hz", "auto"),
+                         ("PAL (UK, Europe, Australia) — 50 Hz", "pal"),
+                         ("NTSC (USA, Canada, Japan) — 60 Hz", "ntsc")].map {
             let item = mi($0.0, #selector(setVideoStandard(_:)))
             item.representedObject = $0.1
-            item.state = $0.1 == "pal" ? .on : .off
             return item
         }
         let standardMenu = NSMenu(title: "Video Standard")

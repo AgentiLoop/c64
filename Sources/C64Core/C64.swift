@@ -11,14 +11,27 @@ public final class C64: CPUBus {
         get { vic.standard }
         set {
             vic.setStandard(newValue)
-            sid.clockHz = clockHz
-            drive8?.hostClock = clockHz
-            drive9?.hostClock = clockHz
-            modem?.clockHz = clockHz
-            c128?.vdc.clockHz = clockHz
+            retuneClocks()
             connectModem()
             reset()
         }
+    }
+    /// Auto video standard: starts (and resets to) NTSC and lets the VIC-II switch between NTSC and
+    /// PAL while running, following the program (see `VICII.autoStandard`).
+    public var autoStandard: Bool {
+        get { vic.autoStandard }
+        set {
+            vic.autoStandard = newValue
+            if newValue && vic.standard != .ntsc { standard = .ntsc }
+        }
+    }
+    /// Gives the SID, drives, modem and VDC the clock of the current standard.
+    private func retuneClocks() {
+        sid.clockHz = clockHz
+        drive8?.hostClock = clockHz
+        drive9?.hostClock = clockHz
+        modem?.clockHz = clockHz
+        c128?.vdc.clockHz = clockHz
     }
     /// CPU clock in Hz for the current standard.
     public var clockHz: Int { vic.standard == .pal ? C64.palClock : C64.ntscClock }
@@ -195,6 +208,7 @@ public final class C64: CPUBus {
             return self.ram[vicBank << 14 | addr]
         }
         vic.colorRead = { [unowned self] o in self.colorRAM[o & 0x3FF] }
+        vic.onStandardChange = { [unowned self] in self.retuneClocks(); self.todCounter = 0 }
         cia1.portAIn = { [unowned self] in self.keyboardPortA() }
         cia1.portBIn = { [unowned self] in self.keyboardPortB() }
         cia2.portAChanged = { [unowned self] in
@@ -213,6 +227,8 @@ public final class C64: CPUBus {
     }
 
     public func reset() {
+        // Auto: every reset starts as NTSC again; the program decides whether it needs PAL.
+        if vic.autoStandard && vic.standard != .ntsc { vic.setStandard(.ntsc); retuneClocks() }
         for i in 0..<ram.count { ram[i] = (i & 0x40) != 0 ? 0xFF : 0x00 }
         portDDR = 0; portData = 0
         updatePort()

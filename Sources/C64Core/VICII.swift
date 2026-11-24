@@ -70,14 +70,47 @@ public final class VICII {
     public private(set) var cyclesPerLine = 63
     public private(set) var linesPerFrame = 312
 
+    /// Auto video standard: at the end of each frame the chip may change between NTSC and PAL
+    /// (without a reset) depending on what the running program expects; see `autoSwitchStandard`.
+    public var autoStandard = false
+    /// Called after an automatic change, so the machine can retune its clocks.
+    public var onStandardChange: (() -> Void)?
+    /// Set when, at the start of a line in this frame, a raster IRQ was armed for line 263 or later —
+    /// a line only PAL has.
+    private var palHint = false
+    private var palHintFrames = 0
+    private var quietFrames = 0
+    /// Frames in a row with (NTSC → PAL) or without (PAL → NTSC) a PAL-only raster IRQ before switching.
+    static let framesToPAL = 2
+    static let framesToNTSC = 150
+
     public init() {}
 
     /// Switches between the PAL 6569 (63 cycles × 312 lines) and NTSC 6567R8 (65 × 263).
     public func setStandard(_ s: VideoStandard) {
+        setGeometry(s)
+        reset()
+    }
+
+    private func setGeometry(_ s: VideoStandard) {
         standard = s
         cyclesPerLine = s == .pal ? 63 : 65
         linesPerFrame = s == .pal ? 312 : 263
-        reset()
+    }
+
+    /// Auto mode, at a frame boundary: a raster IRQ waiting for line 263+ can never fire on NTSC, so
+    /// two such frames switch to PAL (PAL demos, cracktros). PAL goes back to NTSC after about three
+    /// seconds with no such IRQ (the program moved on, e.g. to an NTSC intro or the loader).
+    private func autoSwitchStandard() {
+        if palHint { palHintFrames += 1; quietFrames = 0 } else { palHintFrames = 0; quietFrames += 1 }
+        palHint = false
+        let target: VideoStandard
+        if standard == .ntsc && palHintFrames >= VICII.framesToPAL { target = .pal }
+        else if standard == .pal && quietFrames >= VICII.framesToNTSC { target = .ntsc }
+        else { return }
+        palHintFrames = 0; quietFrames = 0
+        setGeometry(target)
+        onStandardChange?()
     }
 
     public func reset() {
@@ -85,6 +118,7 @@ public final class VICII {
         raster = 0; cycle = 1; irr = 0; imr = 0; irq = false; rasterCompare = 0
         vc = 0; vcbase = 0; rc = 0; displayState = false
         for n in 0..<8 { spriteDMA[n] = false; spriteDisplay[n] = false; expFF[n] = true }
+        palHint = false; palHintFrames = 0; quietFrames = 0
     }
 
     // MARK: - Bus arbitration
@@ -291,10 +325,12 @@ public final class VICII {
         if cycle > cyclesPerLine {
             cycle = 1
             raster += 1
+            if autoStandard && imr & 0x01 != 0 && rasterCompare >= 263 { palHint = true }
             if raster >= linesPerFrame {
                 if standard == .ntsc { fillUnusedLines() }
                 raster = 0
                 vcbase = 0
+                if autoStandard { autoSwitchStandard() }
                 frameCount += 1
                 onFrame?()
             }

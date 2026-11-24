@@ -55,4 +55,47 @@ final class VideoStandardTests: XCTestCase {
         XCTAssertEqual(c64.ram[0x2A6], 1)
         XCTAssertEqual(c64.clockHz, C64.palClock)
     }
+
+    /// $C100: raster IRQ on line 280 (PAL only), counting IRQs in $C000; CIA IRQs off.
+    static let lateRasterIRQ: [UInt8] = [0x00, 0xC1,
+        0x78, 0xA9, 0x7F, 0x8D, 0x0D, 0xDC, 0xAD, 0x0D, 0xDC,           // SEI, CIA1 IRQs off
+        0xA9, 0x26, 0x8D, 0x14, 0x03, 0xA9, 0xC1, 0x8D, 0x15, 0x03,     // vector → $C126
+        0xA9, 0x9B, 0x8D, 0x11, 0xD0, 0xA9, 0x18, 0x8D, 0x12, 0xD0,     // compare line $118 = 280
+        0xA9, 0x01, 0x8D, 0x1A, 0xD0, 0x58, 0x4C, 0x23, 0xC1,           // raster IRQ on, CLI, loop
+        0xEE, 0x00, 0xC0, 0xA9, 0xFF, 0x8D, 0x19, 0xD0, 0x4C, 0x81, 0xEA, // IRQ: INC $C000, ack, exit
+    ]
+
+    /// Auto: a raster IRQ on a line only PAL has switches the running machine to PAL (without a
+    /// reset, so the program keeps running and its IRQ fires); NTSC returns once the program stops
+    /// using such lines, and on reset.
+    func testAutoStandardFollowsTheProgram() throws {
+        guard let roms = ROMSet.load() else { throw XCTSkip("ROMs not installed") }
+        let c64 = C64(roms: roms)
+        c64.autoStandard = true
+        for _ in 0..<180 { c64.runFrame() }
+        XCTAssertEqual(c64.standard, .ntsc, "BASIC alone stays NTSC")
+        XCTAssertEqual(c64.ram[0x2A6], 0)
+
+        c64.loadPRG(VideoStandardTests.lateRasterIRQ)
+        c64.queueTyping("SYS49408\n")
+        for _ in 0..<30 { c64.runFrame() }
+        XCTAssertEqual(c64.standard, .pal)
+        XCTAssertEqual(c64.clockHz, C64.palClock)
+        XCTAssertEqual(c64.sid.clockHz, C64.palClock)
+        let before = c64.ram[0xC000]
+        for _ in 0..<10 { c64.runFrame() }
+        XCTAssertEqual(c64.ram[0xC000] &- before, 10, "one line-280 IRQ per PAL frame")
+
+        c64.poke(0xD01A, 0)                                   // the program moves on
+        for _ in 0..<160 { c64.runFrame() }
+        XCTAssertEqual(c64.standard, .ntsc)
+        XCTAssertEqual(c64.clockHz, C64.ntscClock)
+
+        c64.poke(0xD01A, 1)
+        for _ in 0..<5 { c64.runFrame() }
+        XCTAssertEqual(c64.standard, .pal)
+        c64.reset()
+        XCTAssertEqual(c64.standard, .ntsc, "reset starts as NTSC again")
+        XCTAssertTrue(c64.autoStandard)
+    }
 }
