@@ -67,10 +67,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard let roms = loadROMs() else { NSApp.terminate(nil); return }
         let c64 = C64(roms: roms)
         c64.fastLoad = UserDefaults.standard.object(forKey: "FastLoad") as? Bool ?? true
-        if let raw = UserDefaults.standard.string(forKey: "VideoStandard"),
-           let std = VideoStandard(rawValue: raw), std != .pal {
-            c64.standard = std
-        }
+        // NTSC unless PAL was chosen in the menu.
+        let savedStandard = UserDefaults.standard.string(forKey: "VideoStandard").flatMap(VideoStandard.init(rawValue:))
+        c64.standard = savedStandard ?? .ntsc
         for item in standardItems { item.state = item.representedObject as? String == c64.standard.rawValue ? .on : .off }
         c64.use1571OnC64 = UserDefaults.standard.bool(forKey: "C64Drive1571")
         if UserDefaults.standard.string(forKey: "Model") == "c128", let c128 = roms.c128 {
