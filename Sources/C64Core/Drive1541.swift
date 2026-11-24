@@ -6,7 +6,7 @@
 /// serial direction (PA1), the track 0 sensor (PA0) and BYTE READY on PA7. The WD1770 at $2000
 /// (only used for MFM / CP/M disks) is not emulated.
 public final class Drive1541: CPUBus, FastSerialDevice {
-    public private(set) var cpu: CPU6502!
+    public private(set) var cpu: CPU6502<Drive1541>!
     public let via1 = VIA6522()
     public let via2 = VIA6522()
     var ram = [UInt8](repeating: 0, count: 0x800)

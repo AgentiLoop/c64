@@ -39,17 +39,17 @@ public final class C64: CPUBus {
     /// Mains frequency driving the CIA time-of-day clocks.
     public var mainsHz: Int { vic.standard == .pal ? 50 : 60 }
 
-    public private(set) var cpu: CPU6502!
+    public private(set) var cpu: CPU6502<C64>!
     public let vic = VICII()
     public let sid = SID()
     public let cia1 = CIA6526()
     public let cia2 = CIA6526()
 
-    public var ram = [UInt8](repeating: 0, count: 0x10000)
-    public var colorRAM = [UInt8](repeating: 0, count: 0x400)
-    let basic: [UInt8]
-    let kernal: [UInt8]
-    let chargen: [UInt8]
+    public let ram = Memory(count: 0x10000)
+    public let colorRAM = Memory(count: 0x400)
+    let basic: Memory
+    let kernal: Memory
+    let chargen: Memory
 
     public private(set) var cycles: UInt64 = 0
     var portDDR: UInt8 = 0
@@ -120,6 +120,8 @@ public final class C64: CPUBus {
         if let d8 = drive8, !drive8Is1581 { d.append(d8) }
         if let d9 = drive9 { d.append(d9) }
         iec.devices = d
+        drive8U = drive8.map(Unmanaged.passUnretained)
+        drive9U = drive9.map(Unmanaged.passUnretained)
     }
 
     /// Creates the 1581 on device 9 if its ROM is available (and not already present).
@@ -135,7 +137,7 @@ public final class C64: CPUBus {
     public let datasette = Datasette()
     /// The modem (nil = none), plugged into `modemPort`.
     public var modem: HayesModem? {
-        didSet { modem?.clockHz = clockHz; connectModem() }
+        didSet { modem?.clockHz = clockHz; connectModem(); modemU = modem.map(Unmanaged.passUnretained) }
     }
     /// Where the modem is plugged in.
     public enum ModemPort: String, CaseIterable {
@@ -149,8 +151,8 @@ public final class C64: CPUBus {
     public var modemPort = ModemPort.userPort {
         didSet { if modemPort != oldValue { connectModem() } }
     }
-    var userPort: UserPortInterface?
-    var swiftLink: SwiftLinkInterface?
+    var userPort: UserPortInterface? { didSet { userPortU = userPort.map(Unmanaged.passUnretained) } }
+    var swiftLink: SwiftLinkInterface? { didSet { swiftLinkU = swiftLink.map(Unmanaged.passUnretained) } }
 
     private func connectModem() {
         userPort = nil
@@ -172,7 +174,17 @@ public final class C64: CPUBus {
     /// PETSCII bytes waiting to be fed into the keyboard buffer.
     var typeQueue: [UInt8] = []
     /// C128 mode (MMU, 128K, C128 ROMs) when set; see `setC128`.
-    var c128: C128Memory?
+    var c128: C128Memory? { didSet { c128U = c128.map(Unmanaged.passUnretained) } }
+    // Non-retaining copies of the optional parts that are looked at every cycle: reading a strong
+    // (or unowned) optional property retains and releases it, which costs more than the work itself.
+    private var c128U: Unmanaged<C128Memory>?
+    private var drive8U: Unmanaged<Drive1541>?
+    private var drive9U: Unmanaged<Drive1581>?
+    private var modemU: Unmanaged<HayesModem>?
+    private var userPortU: Unmanaged<UserPortInterface>?
+    private var swiftLinkU: Unmanaged<SwiftLinkInterface>?
+    private var cpuU: Unmanaged<CPU6502<C64>>!
+    private var c128Fast: Bool { c128U?._withUnsafeGuaranteedRef { $0.fast } ?? false }
     /// Called on the emulation thread when the program switched the machine (GO64).
     public var onModelChanged: (() -> Void)?
     /// KERNAL keyboard buffer and its length (C64: $0277/$C6, C128: $034A/$D0).
@@ -180,12 +192,17 @@ public final class C64: CPUBus {
     var keyCount: Int { c128 == nil ? 0xC6 : 0xD0 }
 
     public init(basic: [UInt8], kernal: [UInt8], chargen: [UInt8]) {
-        self.basic = basic
-        self.kernal = kernal
-        self.chargen = chargen
+        self.basic = Memory(basic)
+        self.kernal = Memory(kernal)
+        self.chargen = Memory(chargen)
         cpu = CPU6502(bus: self)
+        cpuU = Unmanaged.passUnretained(cpu)
         wire()
         reset()
+    }
+
+    deinit {
+        for m in [ram, colorRAM, basic, kernal, chargen] { m.deallocate() }
     }
 
     public convenience init(roms: ROMSet) {
@@ -201,13 +218,9 @@ public final class C64: CPUBus {
     }
 
     private func wire() {
-        vic.memRead = { [unowned(unsafe) self] a in
-            let addr = Int(a)
-            if let m = self.c128 { return self.vicRead128(m, addr) }
-            if vicBank & 1 == 0 && addr & 0x3000 == 0x1000 { return self.chargen[addr & 0x0FFF] }
-            return self.ram[vicBank << 14 | addr]
-        }
+        vic.memRead = { [unowned(unsafe) self] a in self.vicFetch(a) }
         vic.colorRead = { [unowned(unsafe) self] o in self.colorRAM[o & 0x3FF] }
+        vic.host = Unmanaged.passUnretained(self)
         vic.onStandardChange = { [unowned(unsafe) self] in self.retuneClocks(); self.todCounter = 0 }
         cia1.portAIn = { [unowned(unsafe) self] in self.keyboardPortA() }
         cia1.portBIn = { [unowned(unsafe) self] in self.keyboardPortB() }
@@ -224,6 +237,14 @@ public final class C64: CPUBus {
             return v
         }
         cia2.portBIn = { [unowned(unsafe) self] in self.userPort?.portB ?? 0xFF }
+    }
+
+    /// A VIC-II memory fetch (14-bit address in the current bank).
+    @inline(__always) func vicFetch(_ a: UInt16) -> UInt8 {
+        let addr = Int(a)
+        if let m = c128U { return m._withUnsafeGuaranteedRef { vicRead128($0, addr) } }
+        if vicBank & 1 == 0 && addr & 0x3000 == 0x1000 { return chargen[addr & 0x0FFF] }
+        return ram[vicBank << 14 | addr]
     }
 
     public func reset() {
@@ -252,6 +273,7 @@ public final class C64: CPUBus {
     /// Runs one full video frame.
     public func runFrame() {
         let start = vic.frameCount
+        let cpu = self.cpu!
         while vic.frameCount == start {
             cpu.step()
             if c128 != nil { checkGo64() }
@@ -262,6 +284,7 @@ public final class C64: CPUBus {
     /// Runs at least the given number of CPU cycles.
     public func run(cycles n: Int) {
         let end = cycles + UInt64(n)
+        let cpu = self.cpu!
         while cycles < end {
             let frame = vic.frameCount
             cpu.step()
@@ -271,17 +294,18 @@ public final class C64: CPUBus {
     }
 
     @inline(__always) func clock() {
-        if let m = c128, m.fast {                              // 2 MHz: every other CPU cycle is free
+        if let u = c128U, u._withUnsafeGuaranteedRef({ m in   // 2 MHz: every other CPU cycle is free
+            guard m.fast else { return false }
             m.halfCycle.toggle()
-            if m.halfCycle { return }
-        }
+            return m.halfCycle
+        }) { return }
         vic.tick()
         cia1.tick()
         cia2.tick()
         sid.tick()
-        for d in clockedDevices { d(self) }
-        if let d = drive8, !drive8Is1581 { d.clockC64Cycle() }
-        if let d = drive9 { d.clockC64Cycle() }
+        if !clockedDevices.isEmpty { for d in clockedDevices { d(self) } }
+        if let d = drive8U, !drive8Is1581 { d._withUnsafeGuaranteedRef { $0.clockC64Cycle() } }
+        if let d = drive9U { d._withUnsafeGuaranteedRef { $0.clockC64Cycle() } }
         if datasette.mode == .playing { datasette.tick(motor: cassetteMotor, cia: cia1) }
         cycles &+= 1
         todCounter += 1
@@ -290,18 +314,22 @@ public final class C64: CPUBus {
             cia1.tickTOD()
             cia2.tickTOD()
         }
-        if let m = c128 { m.vdc.tick(cycle: cycles) }
-        if let m = modem {
-            m.tick(now: cycles)
-            userPort?.tick(self)
-            swiftLink?.tick(now: cycles)
+        if let m = c128U { m._withUnsafeGuaranteedRef { $0.vdc.tick(cycle: cycles) } }
+        if let m = modemU {
+            m._withUnsafeGuaranteedRef { $0.tick(now: cycles) }
+            userPortU?._withUnsafeGuaranteedRef { $0.tick(self) }
+            swiftLinkU?._withUnsafeGuaranteedRef { $0.tick(now: cycles) }
         }
         // The 6510 samples its interrupt inputs one cycle before an instruction ends, so a line
         // that changes in this cycle is seen by the CPU one cycle later.
-        cpu.irqLine = irqSampled
+        let pendingNMI = nmiSampled
+        cpuU._withUnsafeGuaranteedRef { cpu in
+            cpu.irqLine = irqSampled
+            if pendingNMI { cpu.nmiPending = true }
+        }
         irqSampled = vic.irq || cia1.irq
-        if nmiSampled { cpu.nmiPending = true; nmiSampled = false }
-        let nmi = cia2.irq || restorePressed || (swiftLink?.irq ?? false)
+        nmiSampled = false
+        let nmi = cia2.irq || restorePressed || (swiftLinkU?._withUnsafeGuaranteedRef { $0.irq } ?? false)
         if nmi && !nmiLine { nmiSampled = true }
         nmiLine = nmi
     }
@@ -309,14 +337,14 @@ public final class C64: CPUBus {
     // MARK: - CPUBus
 
     public func read(_ address: UInt16) -> UInt8 {
-        while vic.blocksCPU(write: false) && !(c128?.fast ?? false) { clock() }
+        while vic.blocksCPU(write: false) && !c128Fast { clock() }
         let v = peek(address)
         clock()
         return v
     }
 
     public func write(_ address: UInt16, _ value: UInt8) {
-        while vic.blocksCPU(write: true) && !(c128?.fast ?? false) { clock() }
+        while vic.blocksCPU(write: true) && !c128Fast { clock() }
         poke(address, value)
         clock()
     }
@@ -333,7 +361,7 @@ public final class C64: CPUBus {
     /// CPU-visible read with I/O side effects.
     public func peek(_ address: UInt16) -> UInt8 {
         let a = Int(address)
-        if a >= 2, let m = c128 { return peek128(m, a) }
+        if a >= 2, let m = c128U { return m._withUnsafeGuaranteedRef { peek128($0, a) } }
         switch a >> 12 {
         case 0x0:
             if a == 0 { return portDDR }
@@ -367,7 +395,7 @@ public final class C64: CPUBus {
             ram[a] = value
             return
         }
-        if let m = c128 { poke128(m, a, value); return }
+        if let m = c128U { m._withUnsafeGuaranteedRef { poke128($0, a, value) }; return }
         if a >> 12 == 0xD && (loram || hiram) && charen {
             writeIO(a, value)
             return

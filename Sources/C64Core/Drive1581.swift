@@ -1,7 +1,7 @@
 /// True Commodore 1581 emulation: a 2 MHz 6502 running the original DOS ROM, an 8520 CIA
 /// (serial bus, LEDs, motor, side select), a WD1772 controller and an 80-track 3.5" disk.
 public final class Drive1581: CPUBus, FastSerialDevice {
-    public private(set) var cpu: CPU6502!
+    public private(set) var cpu: CPU6502<Drive1581>!
     public let cia = CIA6526()
     public let wd = WD1772()
     var ram = [UInt8](repeating: 0, count: 0x2000)

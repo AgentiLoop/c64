@@ -37,6 +37,18 @@ public final class VICII {
     public var memRead: (UInt16) -> UInt8 = { _ in 0 }
     /// Color RAM read (10-bit offset, low nibble valid).
     public var colorRead: (Int) -> UInt8 = { _ in 0 }
+    /// The machine, called directly for fetches (calling the closures above retains their context).
+    var host: Unmanaged<C64>?
+
+    @inline(__always) private func fetch(_ a: UInt16) -> UInt8 {
+        if let h = host { return h._withUnsafeGuaranteedRef { $0.vicFetch(a) } }
+        return memRead(a)
+    }
+
+    @inline(__always) private func fetchColor(_ o: Int) -> UInt8 {
+        if let h = host { return h._withUnsafeGuaranteedRef { $0.colorRAM[o & 0x3FF] } }
+        return colorRead(o)
+    }
 
     var regs = [UInt8](repeating: 0, count: 0x40)
     public private(set) var raster = 0
@@ -275,8 +287,8 @@ public final class VICII {
     @inline(__always) private var charBase: Int { Int(regs[0x18] & 0x0E) << 10 }
 
     private func cAccess() {
-        lineChars[vmli] = memRead(UInt16((videoMatrix | vc) & 0x3FFF))
-        lineColors[vmli] = colorRead(vc) & 0x0F
+        lineChars[vmli] = fetch(UInt16((videoMatrix | vc) & 0x3FFF))
+        lineColors[vmli] = fetchColor(vc) & 0x0F
     }
 
     private func gAccess() {
@@ -290,23 +302,23 @@ public final class VICII {
                 addr = charBase | (Int(lineChars[vmli]) << 3) | rc
             }
             if ecm { addr &= ~0x0600 }
-            lineGfx[vmli] = memRead(UInt16(addr & 0x3FFF))
+            lineGfx[vmli] = fetch(UInt16(addr & 0x3FFF))
             lineGfxValid[vmli] = true
             vc = (vc + 1) & 0x3FF
             vmli = (vmli + 1) & 0x3F
         } else {
-            idleGfx = memRead(ecm ? 0x39FF : 0x3FFF)
+            idleGfx = fetch(ecm ? 0x39FF : 0x3FFF)
             if vmli < 40 { lineGfxValid[vmli] = false; lineGfx[vmli] = idleGfx }
             vmli = (vmli + 1) & 0x3F
         }
     }
 
     private func spriteFetchCycle(_ n: Int) {
-        let ptr = Int(memRead(UInt16((videoMatrix | 0x3F8 | n) & 0x3FFF))) << 6
+        let ptr = Int(fetch(UInt16((videoMatrix | 0x3F8 | n) & 0x3FFF))) << 6
         if spriteDMA[n] {
             var d: UInt32 = 0
             for _ in 0..<3 {
-                d = d << 8 | UInt32(memRead(UInt16((ptr | mc[n]) & 0x3FFF)))
+                d = d << 8 | UInt32(fetch(UInt16((ptr | mc[n]) & 0x3FFF)))
                 mc[n] = (mc[n] + 1) & 0x3F
             }
             spriteFetch[n] = d
@@ -439,6 +451,27 @@ public final class VICII {
         let xs = xscroll
         let borderColor = VICII.palette[Int(regs[0x20] & 0x0F)]
         let anySprites = spriteShown.contains(true)
+
+        // Fast paths for the common blocks without sprites where no border flip-flop can change
+        // within these 8 pixels: solid border, or standard text mode fully inside the screen.
+        if !anySprites && !(x0...x0 + 7).contains(leftCmp) && !(x0...x0 + 7).contains(rightCmp) {
+            if mainBorder || verticalBorder {
+                for p in 0..<8 { pixels[rowBase + p] = borderColor }
+                return
+            }
+            let gx0 = x0 - 24 - xs
+            if !ecm && !bmm && !mcm && gx0 >= 0 && gx0 + 7 < 320 {
+                let bg = VICII.palette[Int(regs[0x21] & 0x0F)]
+                var col = gx0 >> 3, bit = gx0 & 7
+                for p in 0..<8 {
+                    let on = lineGfx[col] >> (7 - bit) & 1 != 0
+                    pixels[rowBase + p] = on ? VICII.palette[lineGfxValid[col] ? Int(lineColors[col]) : 0] : bg
+                    bit += 1
+                    if bit == 8 { bit = 0; col += 1 }
+                }
+                return
+            }
+        }
 
         for p in 0..<8 {
             let x = x0 + p

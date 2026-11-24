@@ -18,7 +18,7 @@ extension C64 {
     }
 
     /// Returns true when the load was done here (the CPU then continues after LOAD's RTS).
-    func trapLoad(_ cpu: CPU6502) -> Bool {
+    func trapLoad(_ cpu: CPU6502<C64>) -> Bool {
         guard c128 == nil, cpu.pc == C64.kernalLoadEntry, hiram, cpu.a == 0 else { return false }
         let device = Int(ram[0xBA])
         let nameLen = Int(ram[0xB7])
