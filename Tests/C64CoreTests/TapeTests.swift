@@ -22,6 +22,15 @@ final class TapeTests: XCTestCase {
         XCTAssertEqual(files?.first?.prg, [0x01, 0x08, 1, 2, 3, 4])
     }
 
+    func testP00Parse() {
+        var d = Array("C64File".utf8) + [0]
+        d += Array("GAME".utf8) + [UInt8](repeating: 0, count: 12) + [0, 0]
+        d += [0x01, 0x08, 0xEA]
+        XCTAssertEqual(d.count, 29)
+        XCTAssertEqual(P00File.prg(d), [0x01, 0x08, 0xEA])
+        XCTAssertNil(P00File.prg([0x01, 0x08, 0xEA]))
+    }
+
     func makeMachine() throws -> C64 {
         guard let roms = ROMSet.load() else { throw XCTSkip("ROMs not installed") }
         let c64 = C64(roms: roms)

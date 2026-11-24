@@ -97,6 +97,15 @@ public final class Datasette {
     public func tapData() -> [UInt8] { Datasette.makeTAP(pulses) }
 }
 
+/// PC64 file (.P00–.P99): a 26-byte header ("C64File", 0, the 16-byte C64 file name, 0, the REL
+/// record size) in front of ordinary PRG data.
+public enum P00File {
+    public static func prg(_ d: [UInt8]) -> [UInt8]? {
+        guard d.count >= 28, d[0..<8].elementsEqual(Array("C64File".utf8) + [0]) else { return nil }
+        return Array(d[26...])
+    }
+}
+
 /// T64 tape archive: returns the programs it contains as PRG data (load address first).
 public enum T64Archive {
     public struct File { public let name: String; public let prg: [UInt8] }

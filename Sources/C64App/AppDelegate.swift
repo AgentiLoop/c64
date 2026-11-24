@@ -388,6 +388,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 c64.loadPRG(bytes)
                 c64.typeIntoBuffer("RUN\n")
             }
+        case let ext where ext.count == 3 && ext.hasPrefix("p") && ext.dropFirst().allSatisfy(\.isNumber):
+            guard let prg = P00File.prg(bytes) else {
+                let alert = NSAlert()
+                alert.messageText = "Not a valid P00 file"
+                alert.informativeText = url.lastPathComponent
+                alert.runModal()
+                return
+            }
+            runner.perform { c64 in
+                C64Autostart.ensureBooted(c64)
+                c64.loadPRG(prg)
+                c64.typeIntoBuffer("RUN\n")
+            }
         default:
             let alert = NSAlert()
             alert.messageText = "Unsupported file type"
