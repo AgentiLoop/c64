@@ -98,4 +98,30 @@ final class VideoStandardTests: XCTestCase {
         XCTAssertEqual(c64.standard, .ntsc, "reset starts as NTSC again")
         XCTAssertTrue(c64.autoStandard)
     }
+
+    /// $C000: screen off, then every frame from line 50 a 100-line raster-bar loop that writes $D020
+    /// every `lineCycles` cycles (cycle-counted for a PAL (63) or NTSC (65) machine).
+    static func rasterBars(lineCycles: Int) -> [UInt8] {
+        let nops = (lineCycles - 9) / 2                          // STX abs 4 + DEX 2 + BNE 3, NOP 2
+        var p: [UInt8] = [0x00, 0xC0, 0x78, 0xA9, 0x0B, 0x8D, 0x11, 0xD0]
+        p += [0xAD, 0x12, 0xD0, 0xC9, 0x32, 0xD0, 0xF9]          // $C006: LDA $D012, CMP #50, BNE
+        p += [0xA2, 0x64, 0x8E, 0x20, 0xD0] + [UInt8](repeating: 0xEA, count: nops)
+        p += [0xCA, 0xD0, UInt8(256 - (nops + 6)), 0x4C, 0x06, 0xC0]
+        return p
+    }
+
+    /// Auto recognises cycle-counted raster bars: PAL-timed bars on the NTSC machine switch it to
+    /// PAL (and it stays there); NTSC-timed bars keep NTSC.
+    func testAutoStandardRecognisesRasterBarTiming() throws {
+        guard let roms = ROMSet.load() else { throw XCTSkip("ROMs not installed") }
+        for (cycles, expected) in [(63, VideoStandard.pal), (65, .ntsc)] {
+            let c64 = C64(roms: roms)
+            c64.autoStandard = true
+            for _ in 0..<120 { c64.runFrame() }
+            c64.loadPRG(VideoStandardTests.rasterBars(lineCycles: cycles))
+            c64.queueTyping("SYS49152\n")
+            for _ in 0..<300 { c64.runFrame() }
+            XCTAssertEqual(c64.standard, expected, "\(cycles)-cycle bars")
+        }
+    }
 }

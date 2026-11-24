@@ -78,11 +78,57 @@ public final class VICII {
     /// Set when, at the start of a line in this frame, a raster IRQ was armed for line 263 or later —
     /// a line only PAL has.
     private var palHint = false
-    private var palHintFrames = 0
+    private var palFrames = 0
+    private var ntscFrames = 0
     private var quietFrames = 0
-    /// Frames in a row with (NTSC → PAL) or without (PAL → NTSC) a PAL-only raster IRQ before switching.
-    static let framesToPAL = 2
-    static let framesToNTSC = 150
+    /// Frames in a row with PAL (NTSC) evidence before switching; PAL also returns to NTSC after
+    /// `framesToNTSCQuiet` frames with no PAL evidence at all.
+    static let framesToSwitch = 2
+    static let framesToNTSCQuiet = 150
+
+    /// Cycles since power-on, for the register-write timing signature below.
+    private var ticks = 0
+    private var lastWrite = [Int](repeating: Int.min / 2, count: 0x40)
+    /// Per register, this frame: writes that came within two lines of the previous write to the same
+    /// register (raster-bar loops), and which cycle positions they took on a 63- and a 65-cycle line.
+    private var loopWrites = [Int](repeating: 0, count: 0x40)
+    private var pos63 = [UInt64](repeating: 0, count: 0x40)
+    private var pos65 = [UInt64](repeating: 0, count: 0x40)
+    private var pos65Last = [Bool](repeating: false, count: 0x40)
+
+    private func noteWriteTiming(_ r: Int) {
+        let gap = ticks - lastWrite[r]
+        lastWrite[r] = ticks
+        guard gap < 2 * cyclesPerLine else { return }
+        loopWrites[r] += 1
+        pos63[r] |= 1 << UInt64(ticks % 63)
+        let p65 = ticks % 65
+        if p65 == 64 { pos65Last[r] = true } else { pos65[r] |= 1 << UInt64(p65) }
+    }
+
+    /// Smallest number of consecutive cycle positions (on a circular line of `length`) holding all set bits.
+    private static func spread(_ bits: UInt64, last: Bool, length: Int) -> Int {
+        var set: [Int] = (0..<min(length, 64)).filter { bits & (1 << UInt64($0)) != 0 }
+        if last { set.append(64) }
+        guard set.count > 1 else { return set.count }
+        var widestGap = length - set[set.count - 1] + set[0]
+        for i in 1..<set.count { widestGap = max(widestGap, set[i] - set[i - 1]) }
+        return length - widestGap + 1
+    }
+
+    /// Raster-bar code is cycle-counted for one machine: its writes stay at the same place on every
+    /// line of that machine's length (63 PAL, 65 NTSC) and drift across the line on the other.
+    /// Returns, for this frame, how many registers look PAL-timed and how many NTSC-timed.
+    private func timingVotes() -> (pal: Int, ntsc: Int) {
+        var pal = 0, ntsc = 0
+        for r in 0..<0x40 where loopWrites[r] >= 16 {
+            let s63 = VICII.spread(pos63[r], last: false, length: 63)
+            let s65 = VICII.spread(pos65[r], last: pos65Last[r], length: 65)
+            if s63 + 16 <= s65 { pal += 1 } else if s65 + 16 <= s63 { ntsc += 1 }
+        }
+        for r in 0..<0x40 { loopWrites[r] = 0; pos63[r] = 0; pos65[r] = 0; pos65Last[r] = false }
+        return (pal, ntsc)
+    }
 
     public init() {}
 
@@ -98,17 +144,24 @@ public final class VICII {
         linesPerFrame = s == .pal ? 312 : 263
     }
 
-    /// Auto mode, at a frame boundary: a raster IRQ waiting for line 263+ can never fire on NTSC, so
-    /// two such frames switch to PAL (PAL demos, cracktros). PAL goes back to NTSC after about three
-    /// seconds with no such IRQ (the program moved on, e.g. to an NTSC intro or the loader).
+    /// Auto mode, at a frame boundary. PAL evidence: a raster IRQ waiting for line 263+ (never fires
+    /// on NTSC), or raster-bar writes locked to 63-cycle lines (PAL cracktros). NTSC evidence: writes
+    /// locked to 65-cycle lines. Two frames of evidence for the other standard switch to it; PAL also
+    /// goes back to NTSC after about three seconds with no PAL evidence (the program moved on).
     private func autoSwitchStandard() {
-        if palHint { palHintFrames += 1; quietFrames = 0 } else { palHintFrames = 0; quietFrames += 1 }
+        let votes = timingVotes()
+        let pal = palHint || votes.pal > votes.ntsc
+        let ntsc = !palHint && votes.ntsc > votes.pal
         palHint = false
+        palFrames = pal ? palFrames + 1 : 0
+        ntscFrames = ntsc ? ntscFrames + 1 : 0
+        quietFrames = pal ? 0 : quietFrames + 1
         let target: VideoStandard
-        if standard == .ntsc && palHintFrames >= VICII.framesToPAL { target = .pal }
-        else if standard == .pal && quietFrames >= VICII.framesToNTSC { target = .ntsc }
-        else { return }
-        palHintFrames = 0; quietFrames = 0
+        if standard == .ntsc && palFrames >= VICII.framesToSwitch { target = .pal }
+        else if standard == .pal && (ntscFrames >= VICII.framesToSwitch || quietFrames >= VICII.framesToNTSCQuiet) {
+            target = .ntsc
+        } else { return }
+        palFrames = 0; ntscFrames = 0; quietFrames = 0
         setGeometry(target)
         onStandardChange?()
     }
@@ -118,7 +171,7 @@ public final class VICII {
         raster = 0; cycle = 1; irr = 0; imr = 0; irq = false; rasterCompare = 0
         vc = 0; vcbase = 0; rc = 0; displayState = false
         for n in 0..<8 { spriteDMA[n] = false; spriteDisplay[n] = false; expFF[n] = true }
-        palHint = false; palHintFrames = 0; quietFrames = 0
+        palHint = false; palFrames = 0; ntscFrames = 0; quietFrames = 0
     }
 
     // MARK: - Bus arbitration
@@ -178,6 +231,7 @@ public final class VICII {
 
     public func write(_ reg: Int, _ value: UInt8) {
         let r = reg & 0x3F
+        if autoStandard { noteWriteTiming(r) }
         switch r {
         case 0x11:
             regs[0x11] = value
@@ -321,6 +375,7 @@ public final class VICII {
             drawCycle(line: line)
         }
 
+        ticks &+= 1
         cycle += 1
         if cycle > cyclesPerLine {
             cycle = 1
