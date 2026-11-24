@@ -245,12 +245,12 @@ if (renderer) {
   const hex = ["000000","ffffff","68372b","70a4b2","6f3d86","588d43","352879","b8c76f",
                "6f4f25","433900","9a6759","444444","6c6c6c","9ad284","6c5eb5","959595"];
   const uniforms = {
-    time: { value: 0 }, res: { value: new THREE.Vector2() },
+    time: { value: 0 }, res: { value: new THREE.Vector2() }, dpr: { value: 1 },
     pal: { value: hex.map(h => new THREE.Vector3(parseInt(h.slice(0, 2), 16) / 255, parseInt(h.slice(2, 4), 16) / 255, parseInt(h.slice(4), 16) / 255)) }   // exact sRGB, written straight out
   };
   const material = new THREE.ShaderMaterial({ uniforms, vertexShader: `
     void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }`, fragmentShader: `
-    uniform float time; uniform vec2 res; uniform vec3 pal[16];
+    uniform float time; uniform vec2 res; uniform float dpr; uniform vec3 pal[16];
     vec3 c64(int i) { vec3 c = pal[0]; for (int k = 0; k < 16; k++) if (k == i) c = pal[k]; return c; }
     // Classic C64 raster bars: flat colour per raster line, no blending. Each bar is a symmetric
     // ramp of the palette (2 raster lines per step), so it looks rounded/metallic.
@@ -292,8 +292,8 @@ if (renderer) {
       // The beam: one blue bar on a sine. Going up it passes in front of the grey bars,
       // going down behind them (then it shows only in the black gaps).
       float phase = time * 0.8;
-      float sw = sin(phase);                     // swing: 3 lines short of the original at top and bottom
-      float centre = floor(lines * 0.5 + (lines * 0.44 - 3.0) * sw);
+      float sw = sin(phase);                     // swing: 3 lines + 5 CSS px short of the original at each end
+      float centre = floor(lines * 0.5 + (lines * 0.44 - 3.0 - 5.0 * dpr / px) * sw);
       float i = y - (centre - 7.0);
       bool front = cos(phase) > 0.0;
       if (i >= 0.0 && i < 14.0 && (front || !onLine)) col = blueBar(int(i));
@@ -303,7 +303,8 @@ if (renderer) {
   scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material));
   const hero = canvas.parentElement;
   const resize = () => { const w = hero.clientWidth, h = hero.clientHeight;
-    renderer.setSize(w, h, false); renderer.getDrawingBufferSize(uniforms.res.value); };
+    renderer.setSize(w, h, false); renderer.getDrawingBufferSize(uniforms.res.value);
+    uniforms.dpr.value = renderer.getPixelRatio(); };
   new ResizeObserver(resize).observe(hero); resize();
   let visible = true;
   new IntersectionObserver(([e]) => { visible = e.isIntersecting; }).observe(hero);
