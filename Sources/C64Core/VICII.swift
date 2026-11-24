@@ -172,6 +172,9 @@ public final class VICII {
 
     /// Off in tests that compare the fast drawing paths with the general one.
     var fastDraw = true
+    /// False while the picture isn't shown (C128 on its 80-column screen): pixels aren't produced
+    /// when no sprite is on the line (with sprites, drawing also computes collisions, so it goes on).
+    public var drawing = true
 
     public init() {}
     deinit {
@@ -490,6 +493,7 @@ public final class VICII {
         // Fast paths for the common blocks without sprites where no border flip-flop can change
         // within these 8 pixels: solid border, or standard text mode fully inside the screen.
         if fastDraw && !anySprites && !(x0...x0 + 7).contains(leftCmp) && !(x0...x0 + 7).contains(rightCmp) {
+            if !drawing { return }
             if mainBorder || verticalBorder {
                 let out = pixels + rowBase
                 for p in 0..<8 { out[p] = borderColor }

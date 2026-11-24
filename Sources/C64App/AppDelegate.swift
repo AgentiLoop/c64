@@ -31,6 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     let fpsLabel = NSTextField(labelWithString: "")
     let fpsAccessory = NSTitlebarAccessoryViewController()
     var fpsStart = 0.0, fpsEmulated = 0
+    var statusTimer: Timer?
     var lastLED = false
     var lastTape = false
     /// The TAP file in the Datasette (recordings are written back to it).
@@ -132,7 +133,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.setFrameAutosaveName("C64MainWindow")
         applyBorder(UserDefaults.standard.integer(forKey: "BorderMode"))
 
-        view.onDisplay = { [weak self] in self?.frameTick() }
+        runner.onNewFrame = { [weak self] in self?.view.needsDisplay = true }
+        // Title-bar status (drive LED, tape, FPS) four times a second.
+        statusTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in self?.frameTick() }
         observeControllers()
         audio.start()
         runner.start()

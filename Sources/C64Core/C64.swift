@@ -309,7 +309,7 @@ public final class C64: CPUBus {
         if datasette.mode == .playing { datasette.tick(motor: cassetteMotor, cia: cia1) }
         cycles &+= 1
         todCounter += 1
-        if todCounter >= clockHz / mainsHz {
+        if todCounter >= (vic.standard == .pal ? C64.palClock / 50 : C64.ntscClock / 60) {
             todCounter = 0
             cia1.tickTOD()
             cia2.tickTOD()

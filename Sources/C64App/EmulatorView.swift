@@ -8,8 +8,6 @@ final class EmulatorView: MTKView, MTKViewDelegate {
     var runner: EmulatorRunner?
     var keyMapper: KeyMapper?
     var onFileDrop: ((URL) -> Void)?
-    /// Called on the main thread at every display refresh (status updates).
-    var onDisplay: (() -> Void)?
     /// Part of the 384×272 VIC-II frame to show (lets the user trim the border).
     var crop = CGRect(x: 0, y: 0, width: VICII.screenWidth, height: VICII.screenHeight) { didSet { needsRedraw = true } }
     /// Set when the picture must be drawn again although no new frame arrived (resize, crop).
@@ -56,10 +54,10 @@ final class EmulatorView: MTKView, MTKViewDelegate {
         colorPixelFormat = .bgra8Unorm
         clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
         framebufferOnly = true
-        // Draw in step with the display at 60 Hz (the C64's rate); a frame is uploaded only when new.
-        preferredFramesPerSecond = 60
-        isPaused = false
-        enableSetNeedsDisplay = false
+        // Drawn on demand: the runner asks for a draw when it publishes a new picture, and the layer
+        // presents it at the next display refresh. An unchanged screen costs nothing.
+        isPaused = true
+        enableSetNeedsDisplay = true
         delegate = self
         registerForDraggedTypes([.fileURL])
     }
@@ -96,7 +94,6 @@ final class EmulatorView: MTKView, MTKViewDelegate {
     }
 
     func draw(in view: MTKView) {
-        onDisplay?()
         // Nothing new: leave the last presented picture on screen instead of drawing it again.
         guard uploadFrame() || needsRedraw else { return }
         needsRedraw = false

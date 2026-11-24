@@ -21,6 +21,9 @@ final class EmulatorRunner {
     private(set) var frontIs80 = false
     private(set) var frontSize = (width: VICII.screenWidth, height: VICII.screenHeight)
     private var vdcBuffer: [UInt32] = []
+    /// Called on the main thread after a new picture was published (at most one call pending).
+    var onNewFrame: (() -> Void)?
+    private var newFramePending = false
     /// Which of the C128's two video outputs the window shows, like the input switch on a monitor.
     enum Display: Int { case automatic, columns40, columns80 }
     var display = Display.automatic
@@ -87,7 +90,16 @@ final class EmulatorRunner {
             c64.vic.copyFrame(into: &frontBuffer)
             frontSize = (VICII.screenWidth, VICII.screenHeight)
         }
+        let notify = !newFramePending
+        newFramePending = true
         lock.unlock()
+        if notify {
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.lock.lock(); self.newFramePending = false; self.lock.unlock()
+                self.onNewFrame?()
+            }
+        }
     }
 
     private var quietFrames = 0
@@ -140,8 +152,8 @@ final class EmulatorRunner {
             case .columns40: as80 = false
             case .columns80: as80 = c64.isC128
             }
-            // Only draw the 80-column picture while it is on screen (it costs as much as the VIC-II).
-            if c64.isC128 { c64.vdcDrawing = as80 }
+            // Each chip only draws its picture while it is on screen.
+            if c64.isC128 { c64.vdcDrawing = as80; c64.vic.drawing = !as80 } else { c64.vic.drawing = true }
             let newVIC = c64.vic.frameCount != vicFrame
             let newVDC = c64.vdcPictureCount != vdcPicture
             vicFrame = c64.vic.frameCount
