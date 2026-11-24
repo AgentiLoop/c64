@@ -38,7 +38,8 @@
   td a:has(code)::after, a[download]::after { content: "\2193"; color: #a5a0ff; font-weight: 700; }
   td a:has(code):hover, a[download]:hover { background: #a5a0ff; border-color: #a5a0ff; color: var(--c64-blue); }
   td a:has(code):hover::after, a[download]:hover::after { color: var(--c64-blue); }
-  .shot { width: 100%; height: auto; border-radius: 16px; overflow: hidden; display: block; margin: 20px 0; background: #000; }
+  .shot { width: 100%; height: auto; aspect-ratio: 1280 / 886; object-fit: cover; border-radius: 16px; overflow: hidden;
+          clip-path: inset(0 round 16px); display: block; margin: 20px 0; background: transparent; }
   .shots { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 20px 0; }
   .shots figure { margin: 0; }
   .shots img { width: 100%; height: auto; display: block; border-radius: 10px; background: #000; }
@@ -123,7 +124,7 @@ LOAD "C64 FOR MACOS",8,1
 </header>
 <main class="screen">
 
-  <video class="shot" src="demo.mp4" poster="screenshot.jpg" width="1280" height="878"
+  <video class="shot" src="demo.mp4" poster="poster.jpg" width="1280" height="886"
          autoplay muted loop playsinline controls aria-label="Screen recording of the C64 app running"></video>
 
   <h2>Commodore 128 built in</h2>
