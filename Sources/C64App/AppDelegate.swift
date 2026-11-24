@@ -785,9 +785,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     var drive9Is1541Item: NSMenuItem!
+    var newBlankDisk9Item: NSMenuItem!
 
     private func setDrive9Is1541Item(_ on: Bool) {
         drive9Is1541Item?.state = on ? .on : .off
+        newBlankDisk9Item?.title = on ? "New Blank D64 for Drive 9…" : "New Blank D81 for Drive 9…"
         UserDefaults.standard.set(on, forKey: "Drive9Is1541")
     }
 
@@ -811,15 +813,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
+    /// A blank disk for drive 9 in its current type: D64 when it is a 1541, D81 when it is the 1581.
     @objc func newBlankDisk9(_ sender: Any?) {
+        let is1541 = drive9Is1541Item.state == .on
+        let ext = is1541 ? "d64" : "d81"
         let panel = NSSavePanel()
-        panel.allowedContentTypes = [UTType(filenameExtension: "d81")].compactMap { $0 }
-        panel.nameFieldStringValue = "blank.d81"
+        panel.allowedContentTypes = [UTType(filenameExtension: ext)].compactMap { $0 }
+        panel.nameFieldStringValue = "blank.\(ext)"
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        let name = url.deletingPathExtension().lastPathComponent
-        let image = D81Image.blank(name: String(name.prefix(16)), id: "01")
-        do { try Data(image.data).write(to: url) } catch { return }
-        insertDisk9(image, url: url)
+        let name = String(url.deletingPathExtension().lastPathComponent.prefix(16))
+        if is1541 {
+            let image = D64Image.blank(name: name, id: "01")
+            do { try Data(image.data).write(to: url) } catch { return }
+            insertDisk9(GCRDisk(d64: image), url: url)
+        } else {
+            let image = D81Image.blank(name: name, id: "01")
+            do { try Data(image.data).write(to: url) } catch { return }
+            insertDisk9(image, url: url)
+        }
     }
 
     @objc func toggleFastLoad(_ sender: NSMenuItem) {
@@ -1159,6 +1170,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         diskWarpItem = mi("Warp While Disk Motor Runs", #selector(toggleDiskWarp(_:)))
         drive9Is1541Item = mi("Drive 9 Is a 1541 (Two-Disk Games)", #selector(toggleDrive9Is1541(_:)))
         drive9Is1541Item.state = UserDefaults.standard.bool(forKey: "Drive9Is1541") ? .on : .off
+        newBlankDisk9Item = mi(drive9Is1541Item.state == .on ? "New Blank D64 for Drive 9…" : "New Blank D81 for Drive 9…",
+                               #selector(newBlankDisk9(_:)), "n", [.command, .shift])
         add("Drive", [
             mi("Attach Disk to Drive 8…", #selector(attachDisk(_:)), "d"),
             mi("Eject Disk", #selector(ejectDisk(_:)), "e"),
@@ -1167,7 +1180,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             .separator(),
             mi("Attach Disk to Drive 9…", #selector(attachDisk9(_:)), "d", [.command, .shift]),
             mi("Eject Drive 9 Disk", #selector(ejectDisk9(_:)), "e", [.command, .shift]),
-            mi("New Blank D81…", #selector(newBlankDisk9(_:)), "n", [.command, .shift]),
+            newBlankDisk9Item,
             drive9Is1541Item,
             .separator(),
             fastLoadItem,
