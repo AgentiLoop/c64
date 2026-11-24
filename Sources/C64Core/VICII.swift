@@ -29,6 +29,12 @@ public final class VICII {
         return p
     }()
     /// A copy of the current picture (384×272, 0xAARRGGBB).
+    /// Copies the current picture into `buffer` (resized to 384×272 if needed) without allocating.
+    public func copyFrame(into buffer: inout [UInt32]) {
+        let n = VICII.screenWidth * VICII.screenHeight
+        if buffer.count != n { buffer = [UInt32](repeating: 0, count: n) }
+        buffer.withUnsafeMutableBufferPointer { $0.baseAddress!.update(from: pixels, count: n) }
+    }
     public var frameBuffer: [UInt32] { Array(UnsafeBufferPointer(start: pixels, count: VICII.screenWidth * VICII.screenHeight)) }
     public var frameCount = 0
     public var onFrame: (() -> Void)?

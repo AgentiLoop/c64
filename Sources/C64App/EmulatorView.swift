@@ -8,6 +8,8 @@ final class EmulatorView: MTKView, MTKViewDelegate {
     var runner: EmulatorRunner?
     var keyMapper: KeyMapper?
     var onFileDrop: ((URL) -> Void)?
+    /// Called on the main thread at every display refresh (status updates).
+    var onDisplay: (() -> Void)?
     /// Part of the 384×272 VIC-II frame to show (lets the user trim the border).
     var crop = CGRect(x: 0, y: 0, width: VICII.screenWidth, height: VICII.screenHeight) { didSet { needsRedraw = true } }
     /// Set when the picture must be drawn again although no new frame arrived (resize, crop).
@@ -94,6 +96,7 @@ final class EmulatorView: MTKView, MTKViewDelegate {
     }
 
     func draw(in view: MTKView) {
+        onDisplay?()
         // Nothing new: leave the last presented picture on screen instead of drawing it again.
         guard uploadFrame() || needsRedraw else { return }
         needsRedraw = false

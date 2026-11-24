@@ -10,14 +10,13 @@ final class EmulatorRunner {
     private let lock = NSLock()
     private var pending: [(C64) -> Void] = []
     private var running = false
-    private var callbackPending = false
     private var completedFrames = 0
     /// Bumped each time `frontBuffer` is replaced, so the view uploads only new pictures.
     private var publishedFrames = 0
     /// Pictures the machine has completed (VIC-II, or VDC when showing 80 columns), for the FPS readout.
     var emulatedFrames: Int { lock.lock(); defer { lock.unlock() }; return completedFrames }
     private(set) var frontBuffer = [UInt32](repeating: 0, count: VICII.screenWidth * VICII.screenHeight)
-    var onFrame: (() -> Void)?
+
     /// True when `frontBuffer` holds the C128's 80-column (VDC) picture instead of the VIC-II's.
     private(set) var frontIs80 = false
     private(set) var frontSize = (width: VICII.screenWidth, height: VICII.screenHeight)
@@ -79,19 +78,10 @@ final class EmulatorRunner {
             frontBuffer = vdcBuffer
             frontSize = c64.vdcPictureSize
         } else {
-            frontBuffer = c64.vic.frameBuffer
+            c64.vic.copyFrame(into: &frontBuffer)
             frontSize = (VICII.screenWidth, VICII.screenHeight)
         }
-        let schedule = !callbackPending && onFrame != nil
-        if schedule { callbackPending = true }
         lock.unlock()
-        if schedule {
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                self.lock.lock(); self.callbackPending = false; self.lock.unlock()
-                self.onFrame?()
-            }
-        }
     }
 
     private var quietFrames = 0

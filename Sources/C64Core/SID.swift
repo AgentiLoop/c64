@@ -199,10 +199,13 @@ public final class SID {
     public var isSilent: Bool { silent }
     private var skippedCycles = 0
 
+    /// Brings the voices and the (constant) output samples up to date after silent cycles.
     private func catchUp() {
         guard skippedCycles > 0 else { return }
         v0.skip(skippedCycles); v1.skip(skippedCycles); v2.skip(skippedCycles)
+        sampleClock += Double(skippedCycles)
         skippedCycles = 0
+        while sampleClock >= cyclesPerSample { emitSample() }
     }
 
     /// Output while silent: the volume register's DC offset (constant, so the DC blocker removes it).
@@ -252,12 +255,7 @@ public final class SID {
 
     /// One PHI2 cycle.
     @inline(__always) public func tick() {
-        if silent {
-            skippedCycles += 1
-            sampleClock += 1
-            if sampleClock >= cyclesPerSample { emitSample() }
-            return
-        }
+        if silent { skippedCycles += 1; return }
         v0.clockOscillator(); v1.clockOscillator(); v2.clockOscillator()
         // Hard sync: voice n is reset when voice n-1's MSB rises.
         if v0.sync && v2.msbRising { v0.acc = 0 }
@@ -323,6 +321,7 @@ public final class SID {
 
     /// Removes and returns the generated samples.
     public func takeSamples() -> [Float] {
+        catchUp()
         let s = samples
         samples.removeAll(keepingCapacity: true)
         return s

@@ -132,7 +132,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.setFrameAutosaveName("C64MainWindow")
         applyBorder(UserDefaults.standard.integer(forKey: "BorderMode"))
 
-        runner.onFrame = { [weak self] in self?.frameTick() }
+        view.onDisplay = { [weak self] in self?.frameTick() }
         observeControllers()
         audio.start()
         runner.start()
