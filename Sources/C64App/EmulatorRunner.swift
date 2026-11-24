@@ -74,10 +74,13 @@ final class EmulatorRunner {
         // An unchanged picture (an idle READY screen between cursor blinks) isn't handed over again,
         // so the view has nothing to upload or draw.
         if !as80 && !frontIs80 && c64.vic.frameEquals(frontBuffer) { lock.unlock(); return }
+        if as80 {
+            c64.renderVDC(into: &vdcBuffer)
+            if frontIs80 && vdcBuffer == frontBuffer { lock.unlock(); return }
+        }
         publishedFrames &+= 1
         frontIs80 = as80
         if as80 {
-            c64.renderVDC(into: &vdcBuffer)
             frontBuffer = vdcBuffer
             frontSize = c64.vdcPictureSize
         } else {

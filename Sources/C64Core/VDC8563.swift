@@ -24,8 +24,15 @@ import Foundation
 public final class VDC8563 {
     public static let dotClock = 16_000_000
 
-    public var regs = [UInt8](repeating: 0, count: 64) { didSet { updateLineThreshold() } }
-    public var ram = [UInt8](repeating: 0, count: 0x10000)
+    public var regs = [UInt8](repeating: 0, count: 64) { didSet { updateLineThreshold(); changed() } }
+    public var ram = [UInt8](repeating: 0, count: 0x10000) { didSet { changed() } }
+    /// Set by any register or RAM write. A frame with no writes, the same blink phase and a fully
+    /// drawn previous frame would draw exactly the same pixels, so its lines are not drawn again
+    /// (`drawBuffer` still holds them).
+    private var dirty = true
+    private var reuseLastFrame = false
+    private var drewWholeFrame = false
+    @inline(__always) private func changed() { dirty = true; reuseLastFrame = false }
     var select: UInt8 = 0
     /// CPU clock, for converting CPU cycles to VDC dots.
     var clockHz = C64.palClock { didSet { updateLineThreshold() } }
@@ -202,7 +209,7 @@ public final class VDC8563 {
     private func endOfLine() {
         let step = interlaced ? 2 : 1
         if !inFineAdjust && rowCounter < Int(regs[6]) {
-            if drawing { drawLine() }
+            if drawing && !reuseLastFrame { drawLine() } else { displayLine += 1; if !drawing { drewWholeFrame = false } }
             // Bitmap data is a linear array: one line of R1 bytes (+ R27 skipped) per raster line.
             bitmapAddr += Int(regs[1]) + Int(regs[27])
         }
@@ -236,7 +243,12 @@ public final class VDC8563 {
         }
         frameCount += 1
         field = interlaced ? frameCount & 1 : 0
+        let sameBlinkPhase = frameCount / 16 == (frameCount - 1) / 16
+        let size = (drawWidth, drawHeight)
         startFrame()
+        reuseLastFrame = !dirty && drewWholeFrame && !interlaced && sameBlinkPhase && size == (drawWidth, drawHeight)
+        dirty = false
+        drewWholeFrame = true
     }
 
     // MARK: - Drawing

@@ -220,6 +220,23 @@ final class C128Tests: XCTestCase {
         while v.frameCount < start + 2 { c64.run(cycles: 100) }
     }
 
+    /// Frames without VDC writes reuse the last picture, but the blinking cursor and a later
+    /// write still show up.
+    func testVDCIdleFramesStillBlinkAndUpdate() throws {
+        let (c64, v) = try make80()
+        var seen = Set<[UInt32]>()
+        var frame: [UInt32] = []
+        for _ in 0..<70 { c64.runFrame(); c64.renderVDC(into: &frame); seen.insert(frame) }
+        XCTAssertGreaterThanOrEqual(seen.count, 2, "cursor blinks")
+        c64.queueTyping("PRINT \"IDLE OK\"\n")
+        for _ in 0..<30 { c64.runFrame() }
+        XCTAssertTrue(c64.vdcText().joined().contains("IDLE OK"))
+        let before = frame
+        c64.renderVDC(into: &frame)
+        XCTAssertNotEqual(before, frame)
+        _ = v
+    }
+
     /// VDC character height (R9/R23) and smooth scrolling (R24 vertical, R25 horizontal).
     func testVDCTallCharactersAndSmoothScroll() throws {
         let (c64, v) = try make80()
