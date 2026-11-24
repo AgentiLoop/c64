@@ -67,9 +67,9 @@
   /* ---- Hero: a C64 screen whose border flashes tape-loader raster bars (three.js shader) ---- */
   .hero { position: relative; min-height: min(92vh, 780px); display: grid; place-items: center;
           padding: clamp(28px, 7vw, 84px) clamp(16px, 6vw, 96px); overflow: hidden;
-          background: #1f1650;   /* deep blue, darker than the C64 screen; the raster bars sit faintly on top */ }
+          background: #000000;   /* black */ }
   .hero canvas#bars { position: absolute; inset: 0; width: 100%; height: 100%; display: block; opacity: .45; }
-  .hero-screen { position: relative; top: -9px; z-index: 1; width: min(980px, 100%); background: var(--c64-blue);
+  .hero-screen { position: relative; z-index: 1; width: min(980px, 100%); background: var(--c64-blue);
                  padding: clamp(24px, 4vw, 48px); display: grid; grid-template-columns: auto 1fr; gap: 12px 40px;
                  align-items: center; }   /* hard pixel edge: no shadow or blur outside the screen */
   .hero-screen::after { content: ""; position: absolute; inset: 0; pointer-events: none;   /* scanlines */
@@ -88,7 +88,7 @@
   .btn:hover { transform: translate(2px, 2px); box-shadow: 2px 2px 0 #000; }
   .btn.alt { box-shadow: none; }
   .scroller { grid-column: 1 / -1; width: 100%; height: 44px; display: block; margin-top: 18px; }
-  .hero + .screen { margin-top: 40px; }
+  .hero + .screen { margin-top: 0; }
   @media (max-width: 760px) { .hero-screen { grid-template-columns: 1fr; text-align: center; justify-items: center; }
                               .hero .buttons { justify-content: center; } .hero .tag { margin: 0 auto; } }
   @media (prefers-reduced-motion: reduce) { .hero-icon { animation: none; } }
@@ -98,7 +98,9 @@
 </head>
 <body>
 <header class="hero">
+  <!-- Raster-bar border, switched off for a plain dark blue background:
   <canvas id="bars" aria-hidden="true"></canvas>
+  -->
   <div class="hero-screen">
     <p class="boot mono">    **** COMMODORE 64 BASIC V2 ****
 
@@ -239,6 +241,7 @@ open build/C64.app</pre>
     Commodore 64 is a trademark of its respective owner; ROMs and games are not included. Inspired by real Commodore hardware that I used as a kid.
   </footer>
 </main>
+<!-- Raster-bar border (three.js), switched off for a plain dark blue background:
 <script type="importmap">{ "imports": { "three": "https://unpkg.com/three@0.170.0/build/three.module.js" } }</script>
 <script type="module">
 // Hero border: tape-loader raster bars in the C64's blues, whites and greys, drawn by a three.js fragment shader
@@ -326,13 +329,16 @@ if (renderer) {
   });
 } else { canvas.remove(); }   // no WebGL: the CSS stripes behind it show instead
 </script>
+-->
 <script>
 // DYCP-style sine scroller (each character bobs on its own wave) in the C64's light colours.
 (function () {
   const cv = document.getElementById("scroller"), g = cv.getContext("2d");
   const text = "   C64 & C128 FOR MACOS ... TRUE 1541/1571/1581 DRIVES ... SID ... VIC-II ... VDC 80 COLUMNS ... " +
                "Z80 + CP/M 3.0 ... G64, D71, D81, CRT CARTRIDGES ... BBS MODEM ... GREETINGS TO EVERY 64ER STILL CODING IN 2026 ...   ";
-  const colours = ["#ffffff", "#b8c76f", "#9ad284", "#70a4b2", "#a5a0ff", "#9ad284", "#b8c76f"];
+  // Colour wash through the C64 palette: light red, orange, yellow, light green, green, cyan, light blue, purple, white, and back.
+  const colours = ["#9a6759", "#6f4f25", "#b8c76f", "#9ad284", "#588d43", "#70a4b2", "#6c5eb5", "#6f3d86", "#ffffff",
+                   "#6f3d86", "#6c5eb5", "#70a4b2", "#588d43", "#9ad284", "#b8c76f", "#6f4f25"];
   const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
   let x = 0, ready = false;
   document.fonts.load('16px "Press Start 2P"').then(() => { ready = true; });
@@ -349,7 +355,7 @@ if (renderer) {
         const k = (Math.floor(x / cw) + i) % n;
         const cx = i * cw - (x % cw), cy = h / 2 + Math.sin(t / 260 + cx / 55) * (h / 2 - 10);
         g.fillStyle = "#000"; g.fillText(text[k], cx + 2, cy + 2);
-        g.fillStyle = colours[(k + Math.floor(t / 120)) % colours.length]; g.fillText(text[k], cx, cy);
+        g.fillStyle = colours[k % colours.length]; g.fillText(text[k], cx, cy);
       }
     }
     x = (x + 1.6) % (n * cw);
