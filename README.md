@@ -1,4 +1,4 @@
-# C64, a Commodore 64/128 emulator for macOS
+# C64 is a Commodore 64/128 emulator for macOS
 
 ## Created by Todd Bruss
 
