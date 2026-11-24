@@ -271,6 +271,19 @@ if (renderer) {
       float m = mod(y, 34.0);
       bool onLine = m < 14.0;
       if (onLine) col = grayBar(int(m));
+      // In the black gaps: a sparse two-layer starfield drifting left one C64 pixel at a time
+      // (dark grey far, grey near), so the background moves without competing with the bars.
+      if (!onLine) {
+        float xw = floor(res.x / px), x = floor(gl_FragCoord.x / px);
+        for (int l = 0; l < 2; l++) {
+          float fl = float(l);
+          float h = fract(sin((y + 17.0 * fl) * 91.7) * 43758.5453);
+          if (h < 0.22) {
+            float sx = mod(floor(fract(h * 1731.3) * xw) - floor(time * (6.0 + 12.0 * fl)), xw);
+            if (x >= sx && x < sx + 1.0 + fl) col = c64(l == 0 ? 11 : 12);
+          }
+        }
+      }
       // The beam: one blue bar on a sine. Going up it passes in front of the grey bars,
       // going down behind them (then it shows only in the black gaps).
       float phase = time * 0.8;
