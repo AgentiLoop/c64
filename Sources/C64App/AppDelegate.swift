@@ -936,6 +936,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func softReset(_ sender: Any?) { runner.perform { $0.cpu.reset() } }
     @objc func hardReset(_ sender: Any?) { runner.perform { $0.reset() } }
 
+    /// Reset with C= held for a second, so a C128 starts in C64 mode. A menu shortcut with ⌥ held
+    /// is a different shortcut (⌘R doesn't fire), and ⌥ pressed while a menu is open never reaches
+    /// the emulator, so holding left Option and choosing Reset can't do this by itself.
+    @objc func resetHoldingCommodore(_ sender: NSMenuItem) {
+        let hard = sender.tag == 1
+        runner.perform { c64 in
+            c64.setKey(.commodore, pressed: true)
+            if hard { c64.reset() } else { c64.cpu.reset() }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+            self?.runner.perform { $0.setKey(.commodore, pressed: false) }
+        }
+    }
+
     @objc func toggleWarp(_ sender: Any?) {
         runner.warp.toggle()
         warpItem.state = runner.warp ? .on : .off
@@ -1039,7 +1053,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             standardItem,
             .separator(),
             mi("Reset", #selector(softReset(_:)), "r"),
+            { let i = mi("Reset Holding C= (C128: C64 Mode)", #selector(resetHoldingCommodore(_:)), "r", [.command, .option])
+              i.isAlternate = true; return i }(),
             mi("Hard Reset", #selector(hardReset(_:)), "r", [.command, .shift]),
+            { let i = mi("Hard Reset Holding C= (C128: C64 Mode)", #selector(resetHoldingCommodore(_:)), "r", [.command, .shift, .option])
+              i.isAlternate = true; i.tag = 1; return i }(),
             .separator(),
             warpItem,
             mi("Pause", #selector(togglePause(_:)), "p"),
