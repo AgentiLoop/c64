@@ -168,6 +168,7 @@ C64_SLOW_TESTS=1 swift test -c release -Xswiftc -enable-testing --filter testFor
 |-----|-----|
 | Esc | RUN/STOP |
 | Page Up | RESTORE |
+| Help (Insert), F9, F10, F11, F12, F13 | C128 mode: HELP, ESC, TAB, ALT, LINE FEED, NO SCROLL (the extra keys, scanned through $D02F) |
 | Left Option | C= |
 | Tab / Control | CTRL |
 | Home | CLR/HOME |

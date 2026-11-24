@@ -44,6 +44,13 @@ final class KeyMapper {
         98: Press(keys: [.f7], shift: false), 100: Press(keys: [.f7], shift: true),
         116: Press(keys: [.restore], shift: nil),     // Page Up = RESTORE
         48: Press(keys: [.control], shift: nil),      // Tab = CTRL
+        // C128 extra keys (read in C128 mode through $D02F; ignored by a C64)
+        114: Press(keys: [.help], shift: nil),        // Help / Insert = HELP
+        101: Press(keys: [.esc], shift: nil),         // F9 = ESC
+        109: Press(keys: [.tab], shift: nil),         // F10 = TAB
+        103: Press(keys: [.alt], shift: nil),         // F11 = ALT
+        111: Press(keys: [.lineFeed], shift: nil),    // F12 = LINE FEED
+        105: Press(keys: [.noScroll], shift: nil),    // F13 = NO SCROLL
     ]
 
     static func pressFor(character ch: Character) -> Press? {

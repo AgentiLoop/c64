@@ -62,8 +62,8 @@ public final class C64: CPUBus {
     var nmiSampled = false
 
     /// Keyboard matrix: keyMatrix[row] has bit `col` set while that key is held.
-    /// Row = CIA1 port A bit, column = CIA1 port B bit.
-    var keyMatrix = [UInt8](repeating: 0, count: 8)
+    /// Row = CIA1 port A bit (rows 8–10: the C128's K0–K2 lines), column = CIA1 port B bit.
+    var keyMatrix = [UInt8](repeating: 0, count: 11)
     public var restorePressed = false
     /// Joystick state, bits: 0 up, 1 down, 2 left, 3 right, 4 fire (1 = active).
     public var joystick1: UInt8 = 0
@@ -438,7 +438,7 @@ public final class C64: CPUBus {
     }
 
     public func releaseAllKeys() {
-        for i in 0..<8 { keyMatrix[i] = 0 }
+        for i in 0..<keyMatrix.count { keyMatrix[i] = 0 }
         restorePressed = false
     }
 
@@ -446,6 +446,9 @@ public final class C64: CPUBus {
         let pa = cia1.portAOutput & ~joystick2
         var v: UInt8 = 0xFF
         for row in 0..<8 where pa & (1 << row) == 0 { v &= ~keyMatrix[row] }
+        if let k = c128?.keyLines, k & 7 != 7 {             // C128 extra keys, VIC-IIe $D02F
+            for row in 8..<11 where k & (1 << (row - 8)) == 0 { v &= ~keyMatrix[row] }
+        }
         return v & ~joystick1
     }
 

@@ -35,6 +35,8 @@ final class C128Memory {
     /// 2 MHz mode (VIC-II register $D030 bit 0, BASIC's FAST): the CPU gets two cycles per VIC cycle.
     var fast = false
     var halfCycle = false
+    /// VIC-IIe $D02F: K0–K2 drive the extra keyboard lines (0 = scanned).
+    var keyLines: UInt8 = 0xFF
     /// The 8563 VDC (80-column chip).
     public let vdc = VDC8563()
     /// The KERNAL's active screen is the 80-column one: bit 7 of MODE ($D7) as the ROMs last wrote
@@ -52,7 +54,7 @@ final class C128Memory {
     deinit { for m in [ram1, kernal, basicLo, basicHi, chargen] { m.deallocate() } }
 
     func reset() {
-        cr = 0; pcr = [0, 0, 0, 0]; mcr = 0; rcr = 0; fast = false; halfCycle = false
+        cr = 0; pcr = [0, 0, 0, 0]; mcr = 0; rcr = 0; fast = false; halfCycle = false; keyLines = 0xFF
         mode80 = false; programUsesVDC = false
         vdc.reset()
         p0l = 0; p0h = 0; p1l = 1; p1h = 0; p0hLatch = 0; p1hLatch = 0
@@ -159,6 +161,7 @@ extension C64 {
             case 0xD6: return m.vdc.read(a)
             case 0xD7: return 0xFF
             case 0xD0 where a & 0x3F == 0x30: return 0xFC | (m.fast ? 1 : 0)
+            case 0xD0 where a & 0x3F == 0x2F: return 0xF8 | m.keyLines
             default: return readIO(a)
             }
         }
@@ -197,6 +200,7 @@ extension C64 {
                 m.vdc.write(a, v)
             case 0xD7: break
             case 0xD0 where a & 0x3F == 0x30: m.fast = v & 1 != 0
+            case 0xD0 where a & 0x3F == 0x2F: m.keyLines = v | 0xF8
             default: writeIO(a, v)
             }
             return

@@ -462,3 +462,24 @@ final class C128Tests: XCTestCase {
         XCTAssertFalse(c64.drive8?.is1571 ?? true)
     }
 }
+
+extension C128Tests {
+    /// The extra C128 keys are scanned through VIC-IIe $D02F: HELP types its key string "HELP".
+    func testExtraKeysThroughD02F() throws {
+        let c64 = try makeMachine()
+        for _ in 0..<300 { c64.runFrame() }
+        c64.poke(0xD02F, 0xFE)
+        XCTAssertEqual(c64.peek(0xD02F), 0xFE)
+        c64.setKey(.help, pressed: true)
+        for _ in 0..<5 { c64.runFrame() }
+        c64.setKey(.help, pressed: false)
+        for _ in 0..<30 { c64.runFrame() }
+        XCTAssertTrue(screen(c64).contains("HELP"), screen(c64))
+        // Keypad digits too.
+        c64.setKey(.kp7, pressed: true)
+        for _ in 0..<5 { c64.runFrame() }
+        c64.setKey(.kp7, pressed: false)
+        for _ in 0..<10 { c64.runFrame() }
+        XCTAssertTrue(screen(c64).contains("\n7"), screen(c64))
+    }
+}
