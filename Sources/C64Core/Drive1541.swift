@@ -245,11 +245,16 @@ public final class Drive1541: CPUBus, FastSerialDevice {
         if via2.ca2High { cpu.v = true }   // SO pin: BYTE READY sets the overflow flag
     }
 
+    /// The stepper phase last driven on VIA2 PB0/PB1. Kept apart from `halfTrack`: at the track 1
+    /// stop (the DOS "bump" when formatting or after a read error) the phases keep turning while the
+    /// head can't move, so position and phase no longer line up as `halfTrack & 3`.
+    private var stepperPhase = 0
+
     private func stepperMoved() {
         let phase = Int(via2.portBOutput & 3)
-        let last = (halfTrack) & 3
-        if phase == (last + 1) & 3 { halfTrack = min(halfTrack + 1, 84) }
-        else if phase == (last + 3) & 3 { halfTrack = max(halfTrack - 1, 2) }
+        if phase == (stepperPhase + 1) & 3 { halfTrack = min(halfTrack + 1, 84) }
+        else if phase == (stepperPhase + 3) & 3 { halfTrack = max(halfTrack - 1, 2) }
+        stepperPhase = phase
     }
 
     // MARK: - CPUBus
