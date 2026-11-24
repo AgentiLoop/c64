@@ -34,12 +34,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// FPS / refresh-rate readout in the right corner of the title bar.
     let fpsLabel = NSTextField(labelWithString: "")
     let fpsAccessory = NSTitlebarAccessoryViewController()
-    /// Drive activity light at the left of the title bar, coloured by what the drive is doing.
-    let ledDot = NSView(frame: NSRect(x: 6, y: 8, width: 12, height: 12))
+    /// Drive activity lights at the left of the title bar, one per drive (8, 9), coloured by what
+    /// that drive is doing. Drive 9's light shows only while a drive 9 is plugged in.
+    let ledDots = [8, 9].map { n -> NSView in
+        NSView(frame: NSRect(x: 6 + (n - 8) * 30, y: 8, width: 12, height: 12))
+    }
+    let ledLabels = [8, 9].map { n -> NSTextField in
+        let l = NSTextField(labelWithString: "\(n)")
+        l.font = .systemFont(ofSize: 10, weight: .semibold)
+        l.textColor = .secondaryLabelColor
+        l.frame = NSRect(x: 20 + (n - 8) * 30, y: 7, width: 12, height: 14)
+        return l
+    }
     let ledAccessory = NSTitlebarAccessoryViewController()
     var fpsStart = 0.0, fpsEmulated = 0
     var statusTimer: Timer?
-    var lastActivity = DiskActivity.idle
+    var lastActivity: [DiskActivity?] = [.idle, .idle]   // lights start gray and shown
     var lastTape = false
     /// The TAP file in the Datasette (recordings are written back to it).
     var tapeURL: URL?
@@ -126,12 +136,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         fpsAccessory.layoutAttribute = .trailing
         fpsAccessory.isHidden = !showFPS
         window.addTitlebarAccessoryViewController(fpsAccessory)
-        ledDot.wantsLayer = true
-        ledDot.layer?.cornerRadius = 6
-        ledDot.layer?.backgroundColor = NSColor.systemGray.cgColor
-        ledDot.toolTip = "Drive idle"
-        let ledBox = NSView(frame: NSRect(x: 0, y: 0, width: 24, height: 28))
-        ledBox.addSubview(ledDot)
+        let ledBox = NSView(frame: NSRect(x: 0, y: 0, width: 66, height: 28))
+        for (dot, label) in zip(ledDots, ledLabels) {
+            dot.wantsLayer = true
+            dot.layer?.cornerRadius = 6
+            dot.layer?.backgroundColor = NSColor.systemGray.cgColor
+            ledBox.addSubview(dot)
+            ledBox.addSubview(label)
+        }
         ledAccessory.view = ledBox
         ledAccessory.layoutAttribute = .leading
         window.addTitlebarAccessoryViewController(ledAccessory)
@@ -193,10 +205,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     // MARK: - Frame tick (main thread)
 
     private func frameTick() {
-        // The more telling of the two drives' activities (anything beats plain reading or idle).
-        let a8 = runner.c64.drive8?.activity ?? .idle
-        let a9 = runner.c64.drive9_1541?.activity ?? runner.c64.drive9?.activity ?? .idle
-        let activity = [.idle, .reading].contains(a8) && a9 != .idle ? a9 : a8
+        let c64 = runner.c64
+        // Drive 8 is the 1541/1571, or the 1581 when it was moved to device 8.
+        let present = [c64.drive8 != nil || c64.drive8Is1581,
+                       c64.drive9_1541 != nil || (c64.drive9 != nil && !c64.drive8Is1581)]
+        let activities: [DiskActivity?] = [
+            c64.drive8Is1581 ? c64.drive9?.activity : c64.drive8?.activity,
+            c64.drive9_1541?.activity ?? (c64.drive8Is1581 ? nil : c64.drive9?.activity),
+        ].enumerated().map { present[$0.offset] ? ($0.element ?? .idle) : nil }
         let tape = runner.c64.datasette.mode != .stopped && runner.c64.cassetteMotor
         let now = ProcessInfo.processInfo.systemUptime
         if now - fpsStart >= 1 {
@@ -211,12 +227,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             fpsText = text
             fpsLabel.stringValue = text
         }
-        if activity != lastActivity || tape != lastTape {
-            lastActivity = activity
+        for i in 0..<2 where activities[i] != lastActivity[i] {
+            lastActivity[i] = activities[i]
+            ledDots[i].isHidden = activities[i] == nil
+            ledLabels[i].isHidden = activities[i] == nil
+            guard let a = activities[i] else { continue }
+            let (color, help) = AppDelegate.lightStyle(a)
+            ledDots[i].layer?.backgroundColor = color.cgColor
+            ledDots[i].toolTip = "Drive \(8 + i): \(help)"
+            ledLabels[i].toolTip = ledDots[i].toolTip
+        }
+        if tape != lastTape {
             lastTape = tape
-            let (color, help) = AppDelegate.lightStyle(activity)
-            ledDot.layer?.backgroundColor = color.cgColor
-            ledDot.toolTip = help
             window.title = (tape ? "▶ " : "") + baseTitle
         }
     }

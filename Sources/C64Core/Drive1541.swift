@@ -133,11 +133,17 @@ public final class Drive1541: CPUBus, FastSerialDevice {
     }
 
     public var ledOn: Bool { via2.portBOutput & 0x08 != 0 }
+    /// Drive cycle of the last byte the head wrote (for the activity light).
+    private var lastHeadWrite: UInt64?
     var sniffer = CommandSniffer()
     /// What the drive is doing (for the activity light): idle unless the LED is on.
     public var activity: DiskActivity {
         guard ledOn else { return .idle }
-        let headWriting = mfm == nil ? !via2.cb2High && motorOn : wd.isWriting
+        // Copiers and fast formatters write sector by sector with their own drive code: between
+        // writes the head only reads (looking for the next header), so the light stays "writing"
+        // for half a second after the head last wrote.
+        let recentWrite = lastHeadWrite.map { cycles &- $0 < 500_000 } ?? false
+        let headWriting = mfm == nil ? (!via2.cb2High && motorOn) || recentWrite : wd.isWriting
         return DiskActivity.classify(command: sniffer.command, headWriting: headWriting)
     }
     public var motorOn: Bool { via2.portBOutput & 0x04 != 0 }
@@ -224,7 +230,7 @@ public final class Drive1541: CPUBus, FastSerialDevice {
         headPos = (headPos + 1) % n
         if !via2.cb2High {
             // Write mode: the byte in VIA2 port A goes onto the disk.
-            if !d.writeProtected { d.write(halfTrack: halfTrack, position: headPos, via2.ora) }
+            if !d.writeProtected { d.write(halfTrack: halfTrack, position: headPos, via2.ora); lastHeadWrite = cycles }
             sync = false
             byteReady()
         } else {
