@@ -262,7 +262,7 @@ public final class C64: CPUBus {
         drive9?.reset()
         swiftLink?.reset()
         c128?.reset()
-        cpu.reset()
+        if c128 == nil { cpu.reset() }                      // a C128 starts on the Z80
         irqSampled = false; nmiSampled = false
         resetCycle = cycles
         typeQueue.removeAll()
@@ -275,7 +275,7 @@ public final class C64: CPUBus {
         let start = vic.frameCount
         let cpu = self.cpu!
         while vic.frameCount == start {
-            cpu.step()
+            stepCPU(cpu)
             if let m = c128U, m._withUnsafeGuaranteedRef({ $0.go64Requested }) { checkGo64() }
         }
         feedTypeQueue()
@@ -287,10 +287,23 @@ public final class C64: CPUBus {
         let cpu = self.cpu!
         while cycles < end {
             let frame = vic.frameCount
-            cpu.step()
+            stepCPU(cpu)
             if let m = c128U, m._withUnsafeGuaranteedRef({ $0.go64Requested }) { checkGo64() }
             if vic.frameCount != frame { feedTypeQueue() }
         }
+    }
+
+    /// One instruction of whichever CPU has the bus (the C128's Z80 or the 6510/8502).
+    @inline(__always) func stepCPU(_ cpu: CPU6502<C64>) {
+        if let u = c128U {
+            let z80 = u._withUnsafeGuaranteedRef { m -> Bool in
+                if m.z80Active { stepZ80(m); return true }
+                if m.needs8502Reset { m.needs8502Reset = false; cpu.reset() }
+                return false
+            }
+            if z80 { return }
+        }
+        cpu.step()
     }
 
     @inline(__always) func clock() {

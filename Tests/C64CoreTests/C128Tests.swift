@@ -483,3 +483,61 @@ extension C128Tests {
         XCTAssertTrue(screen(c64).contains("\n7"), screen(c64))
     }
 }
+
+extension C128Tests {
+    /// Power-on runs the Z80 boot BIOS first; it hands the bus to the 8502 through MMU $D505.
+    func testZ80BootsFirstAndHandsOver() throws {
+        let c64 = try makeMachine()
+        let m = c64.c128!
+        XCTAssertTrue(m.z80Active)
+        var n = 0
+        while m.z80Active && n < 100_000 { c64.stepCPU(c64.cpu); n += 1 }
+        XCTAssertFalse(m.z80Active, "the Z80 never handed over to the 8502")
+        XCTAssertGreaterThan(n, 50)
+        for _ in 0..<300 { c64.runFrame() }
+        XCTAssertTrue(screen(c64).contains("COMMODORE BASIC V7.0"), screen(c64))
+    }
+
+    /// 40-column CP/M screen: upper case is screen codes 65–90, lower case 1–26.
+    func cpmScreen(_ c64: C64) -> String {
+        let base = Int(c64.vic.read(0x18) & 0xF0) << 6 | c64.vicBank << 14
+        return (0..<25).map { row in
+            String((0..<40).map { col -> Character in
+                let c = c64.ram[base + row * 40 + col] & 0x7F
+                switch c {
+                case 1...26: return Character(UnicodeScalar(c + 96))
+                case 32...63, 65...90: return Character(UnicodeScalar(c))
+                default: return " "
+                }
+            })
+        }.joined(separator: "\n")
+    }
+
+    /// Boots CP/M 3.0 from a CP/M system disk (GCR, $C128_CPM_D64) on the 1571 through the Z80 and
+    /// lists the directory with DIR.
+    func testBootsCPM() throws {
+        guard let path = ProcessInfo.processInfo.environment["C128_CPM_D64"],
+              let data = FileManager.default.contents(atPath: path),
+              let image = D64Image(data: [UInt8](data)) else { throw XCTSkip("C128_CPM_D64 not set") }
+        guard let roms = ROMSet.load(), let c128 = roms.c128, roms.drive1571 != nil else { throw XCTSkip("ROMs") }
+        let c64 = C64(roms: roms)
+        c64.setC128(c128)
+        c64.drive8!.insert(GCRDisk(d64: image))
+        c64.reset()
+        for _ in 0..<1500 where !cpmScreen(c64).contains("A>") { c64.runFrame() }
+        var s = cpmScreen(c64)
+        XCTAssertTrue(s.contains("CP/M 3.0"), s)
+        XCTAssertTrue(s.contains("A>"), s)
+        XCTAssertTrue(c64.c128!.z80Active)
+        for key in [C64Key.d, .i, .r, .ret] {
+            c64.setKey(key, pressed: true)
+            for _ in 0..<4 { c64.runFrame() }
+            c64.setKey(key, pressed: false)
+            for _ in 0..<4 { c64.runFrame() }
+        }
+        for _ in 0..<600 { c64.runFrame() }
+        s = cpmScreen(c64)
+        XCTAssertTrue(s.contains("COM"), s)
+        print(s)
+    }
+}

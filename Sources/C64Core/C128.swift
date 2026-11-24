@@ -14,8 +14,8 @@ public struct C128ROMs {
 
 /// C128 mode: the 8722 MMU with 128K RAM (two 64K banks), common RAM and page-0/1 relocation,
 /// the C128 ROMs, and just enough of the 8563 VDC for the KERNAL to initialise it (no 80-column
-/// picture: the machine boots in 40-column mode on the VIC-II). The 8502 starts directly at the
-/// KERNAL reset vector (the Z80 start-up is skipped).
+/// picture: the machine boots in 40-column mode on the VIC-II). As on the real machine the Z80
+/// starts first, runs its boot BIOS and hands the bus to the 8502 through MMU $D505 bit 0.
 final class C128Memory {
     let roms: C128ROMs
     /// RAM bank 1 and the ROMs in fixed storage (read on nearly every cycle).
@@ -35,6 +35,12 @@ final class C128Memory {
     /// 2 MHz mode (VIC-II register $D030 bit 0, BASIC's FAST): the CPU gets two cycles per VIC cycle.
     var fast = false
     var halfCycle = false
+    /// The Z80 (CP/M and the power-on code). It has the bus while MMU $D505 bit 0 is 0.
+    public let z80 = Z80()
+    var z80Debt = 0
+    /// The 8502 has not run since reset: its reset vector is fetched when the Z80 first hands over.
+    var needs8502Reset = true
+    public var z80Active: Bool { mcr & 1 == 0 }
     /// VIC-IIe $D02F: K0–K2 drive the extra keyboard lines (0 = scanned).
     var keyLines: UInt8 = 0xFF
     /// The 8563 VDC (80-column chip).
@@ -55,6 +61,7 @@ final class C128Memory {
 
     func reset() {
         cr = 0; pcr = [0, 0, 0, 0]; mcr = 0; rcr = 0; fast = false; halfCycle = false; keyLines = 0xFF
+        z80.reset(); z80Debt = 0; needs8502Reset = true
         mode80 = false; programUsesVDC = false
         vdc.reset()
         p0l = 0; p0h = 0; p1l = 1; p1h = 0; p0hLatch = 0; p1hLatch = 0
@@ -112,6 +119,7 @@ extension C64 {
     /// Commodore 128 (C128 mode) when its ROMs are given, the C64 when nil. Resets the machine.
     public func setC128(_ roms: C128ROMs?) {
         c128 = roms.map(C128Memory.init)
+        if let m = c128 { wireZ80(m) }
         c128?.vdc.clockHz = clockHz
         wireFastSerial()
         setDrive8Is1571(c128 != nil || use1571OnC64)          // a C128 has a 1571 (C128D); a C64 a 1541
@@ -153,18 +161,26 @@ extension C64 {
 
     func peek128(_ m: C128Memory, _ a: Int) -> UInt8 {
         if a >= 0xFF00 && a <= 0xFF04 { return m.mmuRead(a & 0xFF) }
-        let cr = m.cr
-        if a >= 0xD000 && a < 0xE000 && cr & 1 == 0 {
-            switch a >> 8 {
-            case 0xD4: return sid.read(a & 0x1F)
-            case 0xD5: return m.mmuRead(a & 0xFF)
-            case 0xD6: return m.vdc.read(a)
-            case 0xD7: return 0xFF
-            case 0xD0 where a & 0x3F == 0x30: return 0xFC | (m.fast ? 1 : 0)
-            case 0xD0 where a & 0x3F == 0x2F: return 0xF8 | m.keyLines
-            default: return readIO(a)
-            }
+        if a >= 0xD000 && a < 0xE000 && m.cr & 1 == 0 { return ioRead128(m, a) }
+        return memRead128(m, a)
+    }
+
+    /// The I/O chips at $D000–$DFFF (8502 with I/O banked in, or Z80 IN).
+    func ioRead128(_ m: C128Memory, _ a: Int) -> UInt8 {
+        switch a >> 8 {
+        case 0xD4: return sid.read(a & 0x1F)
+        case 0xD5: return m.mmuRead(a & 0xFF)
+        case 0xD6: return m.vdc.read(a)
+        case 0xD7: return 0xFF
+        case 0xD0 where a & 0x3F == 0x30: return 0xFC | (m.fast ? 1 : 0)
+        case 0xD0 where a & 0x3F == 0x2F: return 0xF8 | m.keyLines
+        default: return readIO(a)
         }
+    }
+
+    /// ROM or RAM as selected by the configuration register (no I/O).
+    func memRead128(_ m: C128Memory, _ a: Int) -> UInt8 {
+        let cr = m.cr
         switch a {
         case 0x4000..<0x8000:
             if cr & 0x02 == 0 { return m.basicLo[a - 0x4000] }
@@ -191,20 +207,7 @@ extension C64 {
     func poke128(_ m: C128Memory, _ a: Int, _ v: UInt8) {
         if a == 0xFF00 { m.cr = v; return }
         if a >= 0xFF01 && a <= 0xFF04 { m.cr = m.pcr[a - 0xFF01]; return }   // load a preset
-        if a >= 0xD000 && a < 0xE000 && m.cr & 1 == 0 {
-            switch a >> 8 {
-            case 0xD4: sid.write(a & 0x1F, v)
-            case 0xD5: m.mmuWrite(a & 0xFF, v)
-            case 0xD6:
-                if a & 1 != 0 && !runningROM128(m) { m.programUsesVDC = true }
-                m.vdc.write(a, v)
-            case 0xD7: break
-            case 0xD0 where a & 0x3F == 0x30: m.fast = v & 1 != 0
-            case 0xD0 where a & 0x3F == 0x2F: m.keyLines = v | 0xF8
-            default: writeIO(a, v)
-            }
-            return
-        }
+        if a >= 0xD000 && a < 0xE000 && m.cr & 1 == 0 { ioWrite128(m, a, v); return }
         let (bank, addr) = m.locate(a)                         // writes always reach RAM
         if bank == 0 {
             ram[addr] = v
@@ -212,6 +215,86 @@ extension C64 {
         } else {
             m.ram1[addr] = v
         }
+    }
+
+    func ioWrite128(_ m: C128Memory, _ a: Int, _ v: UInt8) {
+        switch a >> 8 {
+        case 0xD4: sid.write(a & 0x1F, v)
+        case 0xD5: m.mmuWrite(a & 0xFF, v)
+        case 0xD6:
+            if a & 1 != 0 && !runningROM128(m) { m.programUsesVDC = true }
+            m.vdc.write(a, v)
+        case 0xD7: break
+        case 0xD0 where a & 0x3F == 0x30: m.fast = v & 1 != 0
+        case 0xD0 where a & 0x3F == 0x2F: m.keyLines = v | 0xF8
+        default: writeIO(a, v)
+        }
+    }
+
+    @inline(__always) func ramWrite128(_ m: C128Memory, _ a: Int, _ v: UInt8) {
+        let (bank, addr) = m.locate(a)
+        if bank == 0 { ram[addr] = v } else { m.ram1[addr] = v }
+    }
+
+    // MARK: - Z80 bus (as in VICE's z80mem.c)
+
+    /// Z80 memory: in bank 0 the boot BIOS (KERNAL ROM $D000–$DFFF) at $0000–$0FFF, colour RAM at
+    /// $1000–$13FF while I/O is on, RAM (never I/O or character ROM) at $D000–$DFFF, otherwise the
+    /// same ROMs and RAM the 8502 sees.
+    func z80Read(_ m: C128Memory, _ a: Int) -> UInt8 {
+        if a >= 0xFF00 && a <= 0xFF04 { return m.mmuRead(a & 0xFF) }
+        if a < 0x1000 && m.cr & 0x40 == 0 { return m.kernal[0x1000 + a] }
+        if a & 0xFC00 == 0x1000 && m.cr & 1 == 0 { return readIO(0xD800 | (a & 0x3FF)) & 0x0F }
+        if a >> 12 == 0xD { return ramRead128(m, a) }
+        return memRead128(m, a)
+    }
+
+    func z80Write(_ m: C128Memory, _ a: Int, _ v: UInt8) {
+        if a >= 0xFF00 && a <= 0xFF04 { poke128(m, a, v); return }
+        if a < 0x1000 && m.cr & 0x40 == 0 { ramWrite128(m, 0xD000 | a, v); return }
+        if a & 0xFC00 == 0x1000 && m.cr & 1 == 0 { writeIO(0xD800 | (a & 0x3FF), v); return }
+        ramWrite128(m, a, v)
+    }
+
+    /// Z80 I/O space: the chips at $D000–$DFFF (the MMU only while its I/O bit is on), RAM
+    /// $D000–$DFFF through ports $0000–$0FFF in bank 0; anything else reads memory.
+    func z80In(_ m: C128Memory, _ port: Int) -> UInt8 {
+        if port < 0x1000 {
+            return m.cr & 0x40 != 0 ? z80Read(m, port) : ramRead128(m, 0xD000 | port)
+        }
+        if port >> 8 == 0xD5 { return m.cr & 1 != 0 ? 0 : m.mmuRead(port & 0xFF) }
+        if port >> 12 == 0xD { return ioRead128(m, port) }
+        return z80Read(m, port)
+    }
+
+    func z80Out(_ m: C128Memory, _ port: Int, _ v: UInt8) {
+        if port < 0x1000 {
+            if m.cr & 0x40 != 0 { z80Write(m, port, v) } else { ramWrite128(m, 0xD000 | port, v) }
+            return
+        }
+        if port >> 8 == 0xD5 { if m.cr & 1 == 0 { m.mmuWrite(port & 0xFF, v) }; return }
+        if port >> 12 == 0xD { ioWrite128(m, port, v); return }
+        z80Write(m, port, v)
+    }
+
+    /// Runs one Z80 instruction while the Z80 has the bus (MMU $D505 bit 0 = 0). The Z80 gets two
+    /// T-states per 1 MHz system cycle (its 4 MHz clock is stretched on every bus access) and,
+    /// like the 8502, stops while the VIC-II takes the bus.
+    func stepZ80(_ m: C128Memory) {
+        let z = m.z80
+        while vic.blocksCPU(write: false) { clock() }
+        z.intLine = vic.irq || cia1.irq
+        m.z80Debt += z.step()
+        while m.z80Debt >= 2 { m.z80Debt -= 2; clock() }
+    }
+
+    /// Hooks the Z80 up to the C128 bus.
+    func wireZ80(_ m: C128Memory) {
+        let z = m.z80
+        z.readMem = { [unowned(unsafe) self, unowned(unsafe) m] a in self.z80Read(m, Int(a)) }
+        z.writeMem = { [unowned(unsafe) self, unowned(unsafe) m] a, v in self.z80Write(m, Int(a), v) }
+        z.readIO = { [unowned(unsafe) self, unowned(unsafe) m] a in self.z80In(m, Int(a)) }
+        z.writeIO = { [unowned(unsafe) self, unowned(unsafe) m] a, v in self.z80Out(m, Int(a), v) }
     }
 
     /// True while the 8502 is executing ROM (KERNAL, screen editor or BASIC), not a program in RAM.

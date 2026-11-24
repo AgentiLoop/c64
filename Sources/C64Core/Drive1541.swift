@@ -3,8 +3,8 @@
 ///
 /// Given the 32 KB 1571 ROM it is a 1571: the same hardware plus a 6526 CIA for the fast serial
 /// (burst) bus at $4000, a second head (side select on VIA1 PA2), a 1/2 MHz switch (PA5), the fast
-/// serial direction (PA1), the track 0 sensor (PA0) and BYTE READY on PA7. The WD1770 at $2000
-/// (only used for MFM / CP/M disks) is not emulated.
+/// serial direction (PA1), the track 0 sensor (PA0) and BYTE READY on PA7, and the WD1770 MFM
+/// controller at $2000 (the DOS probes it to tell MFM from GCR disks; no MFM disk is present yet).
 public final class Drive1541: CPUBus, FastSerialDevice {
     public private(set) var cpu: CPU6502<Drive1541>!
     public let via1 = VIA6522()
@@ -20,6 +20,8 @@ public final class Drive1541: CPUBus, FastSerialDevice {
     public let is1571: Bool
     /// The 1571's CIA (fast serial port); unused on a 1541.
     public let cia = CIA6526()
+    /// The 1571's WD1770 floppy controller (MFM disks); unused on a 1541.
+    public let wd = WD1772()
     /// BYTE READY as seen on the 1571's VIA1 PA7: set when a byte is complete, cleared when VIA2
     /// port A or B is accessed (as in VICE's via2d.c).
     var byteReadyLevel = false
@@ -51,6 +53,8 @@ public final class Drive1541: CPUBus, FastSerialDevice {
             cia.onSerialOut = { [unowned(unsafe) self] byte in
                 if self.fastSerialOut { self.iec.driveSentFast(byte) }
             }
+            wd.spinning = { [unowned(unsafe) self] in self.motorOn }
+            wd.side = { [unowned(unsafe) self] in self.side1 ? 1 : 0 }
         }
         via1.portBIn = { [unowned(unsafe) self] in
             var v: UInt8 = 0x00          // bits 5/6 = 0: device number 8
@@ -74,6 +78,7 @@ public final class Drive1541: CPUBus, FastSerialDevice {
         via1.reset()
         via2.reset()
         cia.reset()
+        wd.reset()
         byteReadyLevel = false
         cpu.reset()
         wake()
@@ -158,6 +163,8 @@ public final class Drive1541: CPUBus, FastSerialDevice {
         via2.tick()
         if is1571 {
             cia.tick()
+            wd.tick()                                       // the WD1770 runs at 2 MHz
+            if !twoMHz { wd.tick() }
         }
         // The disk turns at the same speed whatever the CPU clock: at 2 MHz, every other cycle.
         let rotateNow: Bool
@@ -221,7 +228,7 @@ public final class Drive1541: CPUBus, FastSerialDevice {
             v = via2.read(a)
             if [0, 1, 15].contains(a & 0x0F) { byteReadyLevel = false }
         case 0x8000...: v = is1571 ? rom[a & 0x7FFF] : rom[a & 0x3FFF]
-        case 0x2000..<0x4000 where is1571: v = 0                        // WD1770: idle
+        case 0x2000..<0x4000 where is1571: v = wd.read(a)
         case 0x4000..<0x8000 where is1571: v = cia.read(a)
         default: v = UInt8(a >> 8)
         }
@@ -238,6 +245,7 @@ public final class Drive1541: CPUBus, FastSerialDevice {
             via2.write(a, value)
             if [0, 1, 15].contains(a & 0x0F) { byteReadyLevel = false }
             if a & 0x0F == 0 || a & 0x0F == 2 { stepperMoved() }
+        case 0x2000..<0x4000 where is1571: wd.write(a, value)
         case 0x4000..<0x8000 where is1571: cia.write(a, value)
         default: break
         }
