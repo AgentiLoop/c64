@@ -26,6 +26,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// The D81 file in drive 9 (1581) and its image.
     var disk9URL: URL?
     var disk9: D81Image?
+    /// The D64/G64 in drive 9 when it is a 1541 (written back to `disk9URL` when changed).
+    var disk9GCR: GCRDisk?
     var baseTitle = "C64"
     var showFPS = UserDefaults.standard.bool(forKey: "ShowFPS")
     var fpsText = ""
@@ -80,6 +82,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let checkedStandard = c64.autoStandard ? "auto" : c64.standard.rawValue
         for item in standardItems { item.state = item.representedObject as? String == checkedStandard ? .on : .off }
         c64.use1571OnC64 = UserDefaults.standard.bool(forKey: "C64Drive1571")
+        if UserDefaults.standard.bool(forKey: "Drive9Is1541") { c64.setDrive9Is1541(true) }
         if UserDefaults.standard.string(forKey: "Model") == "c128", let c128 = roms.c128 {
             c64.setC128(c128)
             c64.key4080Down = UserDefaults.standard.bool(forKey: "C128Boot80")
@@ -191,7 +194,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func frameTick() {
         // The more telling of the two drives' activities (anything beats plain reading or idle).
-        let a8 = runner.c64.drive8?.activity ?? .idle, a9 = runner.c64.drive9?.activity ?? .idle
+        let a8 = runner.c64.drive8?.activity ?? .idle
+        let a9 = runner.c64.drive9_1541?.activity ?? runner.c64.drive9?.activity ?? .idle
         let activity = [.idle, .reading].contains(a8) && a9 != .idle ? a9 : a8
         let tape = runner.c64.datasette.mode != .stopped && runner.c64.cassetteMotor
         let now = ProcessInfo.processInfo.systemUptime
@@ -688,9 +692,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.setFrame(frame, display: true, animate: false)
     }
 
-    // MARK: - Drive 9 (1581)
+    // MARK: - Drive 9 (1581, or a second 1541)
 
-    /// Puts a D81 into the 1581 on device 9, creating the drive on first use.
+    private func show1541ROMAlert() {
+        let alert = NSAlert()
+        alert.messageText = "1541 drive ROM not found"
+        alert.informativeText = "Put dos1541*.bin (16 KB) into \(ROMSet.userROMDirectory.path)."
+        alert.runModal()
+    }
+
+    /// Puts a D81 into the 1581 on device 9, creating the drive on first use (a 1541 there is unplugged).
     @discardableResult
     private func insertDisk9(_ image: D81Image, url: URL?) -> Bool {
         guard ROMSet.load()?.drive1581 != nil else {
@@ -701,7 +712,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             return false
         }
         saveDisk9IfNeeded()
+        setDrive9Is1541Item(false)
         disk9 = image
+        disk9GCR = nil
         disk9URL = url
         runner.perform { c64 in
             let wasNew = c64.drive9 == nil
@@ -712,25 +725,90 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         return true
     }
 
+    /// Puts a D64/G64 into a 1541 on device 9 (for games on two disks), plugging the 1541 in first.
+    @discardableResult
+    private func insertDisk9(_ d: GCRDisk, url: URL?) -> Bool {
+        guard ROMSet.load()?.drive1541 != nil else { show1541ROMAlert(); return false }
+        saveDisk9IfNeeded()
+        setDrive9Is1541Item(true)
+        disk9 = nil
+        disk9GCR = d
+        disk9URL = url
+        runner.perform { c64 in
+            let wasNew = c64.drive9_1541 == nil
+            c64.setDrive9Is1541(true)
+            c64.drive9_1541?.insert(d)
+            if wasNew { for _ in 0..<50 { c64.runFrame() } }
+        }
+        return true
+    }
+
     private func saveDisk9IfNeeded() {
-        guard let d = disk9, d.dirty, let url = disk9URL else { return }
+        guard let url = disk9URL else { return }
+        if let d = disk9GCR, d.dirty {
+            do { try Data(d.isG64 ? d.toG64() : d.toD64().data).write(to: url) } catch { NSLog("Saving drive 9 disk failed: \(error)") }
+        }
+        guard let d = disk9, d.dirty else { return }
         do { try Data(d.data).write(to: url) } catch { NSLog("Saving D81 failed: \(error)") }
     }
 
     @objc func attachDisk9(_ sender: Any?) {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [UTType(filenameExtension: "d81")].compactMap { $0 }
+        panel.allowedContentTypes = ["d64", "g64", "d81"].compactMap { UTType(filenameExtension: $0) }
         guard panel.runModal() == .OK, let url = panel.url,
-              let data = FileManager.default.contents(atPath: url.path),
-              let image = D81Image(data: [UInt8](data)) else { return }
-        if insertDisk9(image, url: url) { NSDocumentController.shared.noteNewRecentDocumentURL(url) }
+              let data = FileManager.default.contents(atPath: url.path) else { return }
+        let bytes = [UInt8](data)
+        let inserted: Bool
+        switch url.pathExtension.lowercased() {
+        case "d81":
+            guard let image = D81Image(data: bytes) else { return }
+            inserted = insertDisk9(image, url: url)
+        case "g64":
+            guard let gcr = GCRDisk(g64: bytes) else { return }
+            inserted = insertDisk9(gcr, url: url)
+        default:
+            guard let image = D64Image(data: bytes) else { return }
+            inserted = insertDisk9(GCRDisk(d64: image), url: url)
+        }
+        if inserted { NSDocumentController.shared.noteNewRecentDocumentURL(url) }
     }
 
     @objc func ejectDisk9(_ sender: Any?) {
         saveDisk9IfNeeded()
         disk9 = nil
+        disk9GCR = nil
         disk9URL = nil
-        runner.perform { _ = $0.drive9?.eject() }
+        runner.perform { c64 in
+            _ = c64.drive9?.eject()
+            _ = c64.drive9_1541?.eject()
+        }
+    }
+
+    var drive9Is1541Item: NSMenuItem!
+
+    private func setDrive9Is1541Item(_ on: Bool) {
+        drive9Is1541Item?.state = on ? .on : .off
+        UserDefaults.standard.set(on, forKey: "Drive9Is1541")
+    }
+
+    /// Drive 9 is a second 1541 (D64/G64, two-disk games) instead of the 1581.
+    @objc func toggleDrive9Is1541(_ sender: NSMenuItem) {
+        let on = sender.state != .on
+        if on && ROMSet.load()?.drive1541 == nil { show1541ROMAlert(); return }
+        saveDisk9IfNeeded()
+        disk9 = nil
+        disk9GCR = nil
+        disk9URL = nil
+        setDrive9Is1541Item(on)
+        runner.perform { c64 in
+            if on {
+                _ = c64.drive9?.eject()
+                c64.setDrive9Is1541(true)
+                for _ in 0..<50 { c64.runFrame() }   // let the new drive boot
+            } else {
+                c64.setDrive9Is1541(false)
+            }
+        }
     }
 
     @objc func newBlankDisk9(_ sender: Any?) {
@@ -1079,15 +1157,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         add("Input", [swapItem, cursorJoyItem, fireUpItem])
         fastLoadItem = mi("Instant Load (Skip Disk Wait)", #selector(toggleFastLoad(_:)), "l")
         diskWarpItem = mi("Warp While Disk Motor Runs", #selector(toggleDiskWarp(_:)))
+        drive9Is1541Item = mi("Drive 9 Is a 1541 (Two-Disk Games)", #selector(toggleDrive9Is1541(_:)))
+        drive9Is1541Item.state = UserDefaults.standard.bool(forKey: "Drive9Is1541") ? .on : .off
         add("Drive", [
             mi("Attach Disk to Drive 8…", #selector(attachDisk(_:)), "d"),
             mi("Eject Disk", #selector(ejectDisk(_:)), "e"),
             .separator(),
             mi("New Blank Disk…", #selector(newBlankDisk(_:)), "n"),
             .separator(),
-            mi("Attach Disk to Drive 9 (1581)…", #selector(attachDisk9(_:)), "d", [.command, .shift]),
+            mi("Attach Disk to Drive 9…", #selector(attachDisk9(_:)), "d", [.command, .shift]),
             mi("Eject Drive 9 Disk", #selector(ejectDisk9(_:)), "e", [.command, .shift]),
             mi("New Blank D81…", #selector(newBlankDisk9(_:)), "n", [.command, .shift]),
+            drive9Is1541Item,
             .separator(),
             fastLoadItem,
             diskWarpItem,

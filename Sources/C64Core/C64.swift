@@ -30,6 +30,7 @@ public final class C64: CPUBus {
         sid.clockHz = clockHz
         drive8?.hostClock = clockHz
         drive9?.hostClock = clockHz
+        drive9_1541?.hostClock = clockHz
         modem?.clockHz = clockHz
         c128?.vdc.clockHz = clockHz
     }
@@ -79,9 +80,26 @@ public final class C64: CPUBus {
     public var drive9: Drive1581? {
         didSet { updateIECDevices() }
     }
+    /// A second 1541 on device 9 (two-disk games), instead of the 1581; see `setDrive9Is1541`.
+    public private(set) var drive9_1541: Drive1541? {
+        didSet { updateIECDevices() }
+    }
     var rom1581: [UInt8]?
     var rom1541: [UInt8]?
     var rom1571: [UInt8]?
+
+    /// Plugs a 1541 in as device 9 (unplugging the 1581 there), or unplugs it again.
+    /// Returns false without the 1541 ROM.
+    @discardableResult
+    public func setDrive9Is1541(_ on: Bool) -> Bool {
+        guard on else { drive9_1541 = nil; return true }
+        if drive9_1541 != nil { return true }
+        guard let r = rom1541 else { return false }
+        if !drive8Is1581 { drive9 = nil }
+        drive9_1541 = Drive1541(rom: r, iec: iec, deviceNumber: 9)
+        drive9_1541?.hostClock = clockHz
+        return true
+    }
 
     /// Makes drive 8 a 1571 (or back a 1541), keeping the disk in it. Returns false without the ROM.
     /// Use a 1571 as drive 8 in C64 mode too (it runs in 1541 mode: 1 MHz, slow serial bus).
@@ -109,6 +127,7 @@ public final class C64: CPUBus {
         guard let r = rom1581 else { return nil }
         let image = drive9?.image
         drive8Is1581 = on
+        if !on { drive9_1541 = nil }
         drive9 = Drive1581(rom: r, iec: iec, deviceNumber: on ? 8 : 9)
         drive9?.hostClock = clockHz
         if let img = image { drive9?.insert(img) }
@@ -119,16 +138,20 @@ public final class C64: CPUBus {
         var d: [IECDevice] = []
         if let d8 = drive8, !drive8Is1581 { d.append(d8) }
         if let d9 = drive9 { d.append(d9) }
+        if let d9 = drive9_1541 { d.append(d9) }
         iec.devices = d
         drive8U = drive8.map(Unmanaged.passUnretained)
         drive9U = drive9.map(Unmanaged.passUnretained)
+        drive9_1541U = drive9_1541.map(Unmanaged.passUnretained)
     }
 
-    /// Creates the 1581 on device 9 if its ROM is available (and not already present).
+    /// Creates the 1581 on device 9 if its ROM is available (and not already present); a 1541 on
+    /// device 9 is unplugged.
     @discardableResult
     public func attach1581() -> Drive1581? {
         if let d = drive9 { return d }
         guard let r = rom1581 else { return nil }
+        drive9_1541 = nil
         drive9 = Drive1581(rom: r, iec: iec, deviceNumber: 9)
         drive9?.hostClock = clockHz
         return drive9
@@ -189,6 +212,7 @@ public final class C64: CPUBus {
     private var c128U: Unmanaged<C128Memory>?
     private var drive8U: Unmanaged<Drive1541>?
     private var drive9U: Unmanaged<Drive1581>?
+    private var drive9_1541U: Unmanaged<Drive1541>?
     private var modemU: Unmanaged<HayesModem>?
     private var userPortU: Unmanaged<UserPortInterface>?
     private var swiftLinkU: Unmanaged<SwiftLinkInterface>?
@@ -272,6 +296,7 @@ public final class C64: CPUBus {
         iec.reset()
         drive8?.reset()
         drive9?.reset()
+        drive9_1541?.reset()
         swiftLink?.reset()
         cartridge?.reset()
         c128?.reset()
@@ -333,6 +358,7 @@ public final class C64: CPUBus {
         if !clockedDevices.isEmpty { for d in clockedDevices { d(self) } }
         if let d = drive8U, !drive8Is1581 { d._withUnsafeGuaranteedRef { $0.clockC64Cycle() } }
         if let d = drive9U { d._withUnsafeGuaranteedRef { $0.clockC64Cycle() } }
+        if let d = drive9_1541U { d._withUnsafeGuaranteedRef { $0.clockC64Cycle() } }
         iec.latchHostLines()
         if let c = cartU { c._withUnsafeGuaranteedRef { $0.tick() } }
         if datasette.mode == .playing { datasette.tick(motor: cassetteMotor, cia: cia1) }

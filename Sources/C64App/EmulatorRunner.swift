@@ -129,6 +129,7 @@ final class EmulatorRunner {
 
             c64.run(cycles: max(1, c64.frameCycles / slices))
             let diskBusy = (c64.drive8?.motorOn ?? false) || (c64.drive9?.motorOn ?? false)
+                || (c64.drive9_1541?.motorOn ?? false)
             let warp = self.warp || (warpWhileTape && c64.datasette.mode != .stopped && c64.cassetteMotor)
                 || (warpWhileDisk && diskBusy)
             let samples = c64.sid.takeSamples()

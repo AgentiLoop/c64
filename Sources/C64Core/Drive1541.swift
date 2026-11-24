@@ -42,10 +42,14 @@ public final class Drive1541: CPUBus, FastSerialDevice {
     /// Countdown while a disk change is being signalled through the write-protect sensor.
     var diskChangeCycles = 0
 
-    public init(rom: [UInt8], iec: IECBus) {
+    /// Device number set by the drive's address jumpers (8–11), read by the DOS on VIA1 PB5/PB6.
+    public let deviceNumber: Int
+
+    public init(rom: [UInt8], iec: IECBus, deviceNumber: Int = 8) {
         precondition(rom.count == 0x4000 || rom.count == 0x8000, "1541 ROM must be 16 KB, 1571 ROM 32 KB")
         self.rom = rom
         self.iec = iec
+        self.deviceNumber = deviceNumber
         is1571 = rom.count == 0x8000
         cpu = CPU6502(bus: self)
         if is1571 {
@@ -71,7 +75,7 @@ public final class Drive1541: CPUBus, FastSerialDevice {
             }
         }
         via1.portBIn = { [unowned(unsafe) self] in
-            var v: UInt8 = 0x00          // bits 5/6 = 0: device number 8
+            var v = UInt8((self.deviceNumber - 8) & 3) << 5   // bits 5/6: device number - 8
             if !self.iec.dataLineForDrive { v |= 0x01 }
             if !self.iec.clockLineForDrive { v |= 0x04 }
             if self.atnAsserted { v |= 0x80 }

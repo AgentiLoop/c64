@@ -34,6 +34,9 @@ extension C64 {
         if device == 8, !drive8Is1581, let d = drive8?.disk {
             let img = d.dirty ? d.toD64() : d.source
             entries = img.directory(); read = img.readFile
+        } else if device == 9, let d = drive9_1541?.disk {
+            let img = d.dirty ? d.toD64() : d.source
+            entries = img.directory(); read = img.readFile
         } else if let d9 = drive9, device == d9.deviceNumber, let img = d9.image {
             entries = img.directory(); read = img.readFile
         } else {
