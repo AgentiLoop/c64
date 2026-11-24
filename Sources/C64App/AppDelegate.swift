@@ -687,7 +687,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         disk1 = nil
         diskURL = nil
         runner.perform { _ = $0.drive8?.eject() }
-        baseTitle = "C64"
+        baseTitle = runner.c64.isC128 ? "C128" : "C64"
         window.title = baseTitle
     }
 
