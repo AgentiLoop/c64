@@ -394,7 +394,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             alert.informativeText = url.lastPathComponent
             alert.runModal()
         }
-        baseTitle = "C64 — \(url.lastPathComponent)"
+        baseTitle = url.lastPathComponent
         window.title = baseTitle
     }
 
@@ -677,7 +677,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
               let image = D64Image(data: [UInt8](data)) else { return }
         insertDisk(GCRDisk(d64: image), url: url)
         NSDocumentController.shared.noteNewRecentDocumentURL(url)
-        baseTitle = "C64 — \(url.lastPathComponent)"
+        baseTitle = url.lastPathComponent
         window.title = baseTitle
     }
 
@@ -700,7 +700,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let image = D64Image.blank(name: String(name.prefix(16)), id: "01")
         do { try Data(image.data).write(to: url) } catch { return }
         insertDisk(GCRDisk(d64: image), url: url)
-        baseTitle = "C64 — \(url.lastPathComponent)"
+        baseTitle = url.lastPathComponent
         window.title = baseTitle
     }
 
