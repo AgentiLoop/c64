@@ -560,7 +560,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     /// Crops the picture and reshapes the window so the screen keeps its proportions. The window
-    /// can't be made smaller than the cropped C64 screen at 1× (one C64 pixel per point).
+    /// can't be made smaller than the cropped C64 screen at 2× (two points per C64 pixel).
     private func applyBorder(_ mode: Int) {
         let m = min(max(mode, 0), AppDelegate.borderCrops.count - 1)
         let crop = AppDelegate.borderCrops[m].1
@@ -568,8 +568,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         for item in borderItems { item.state = item.tag == m ? .on : .off }
         let aspect = NSSize(width: crop.width * 0.94, height: crop.height)
         window.contentAspectRatio = aspect
-        window.contentMinSize = aspect
-        let width = max(window.contentLayoutRect.width, aspect.width)
+        window.contentMinSize = NSSize(width: aspect.width * 2, height: aspect.height * 2)
+        let width = max(window.contentLayoutRect.width, aspect.width * 2)
         var frame = window.frame
         let newHeight = width * aspect.height / aspect.width
         let delta = newHeight - window.contentLayoutRect.height
