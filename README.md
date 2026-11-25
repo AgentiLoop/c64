@@ -12,13 +12,6 @@ which keeps the app up to date from GitHub releases.
 
 <table>
   <tr>
-    <td width="50%"><img alt="The C64 app" src="https://github.com/user-attachments/assets/9fa98972-2dbe-49ee-b2ed-f996d7b9961e" /></td>
-    <td width="50%"><img alt="Screen recording of the C64 app running" src="docs/demo.gif" /></td>
-  </tr>
-</table>
-
-<table>
-  <tr>
     <td width="50%"><img alt="The C64 at READY" src="docs/c64-basic.png" /></td>
     <td width="50%"><img alt="The C128's 40-column VIC-II screen at READY" src="docs/c128-40col.png" /></td>
   </tr>
