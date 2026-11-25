@@ -356,7 +356,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc func openDocument(_ sender: Any?) {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = ["prg", "p00", "d64", "d71", "d81", "g64", "img", "t64", "tap", "crt"]
+        panel.allowedContentTypes = ["prg", "p00", "d64", "d71", "d81", "g64", "img", "t64", "tap", "crt", "bin"]
             .compactMap { UTType(filenameExtension: $0) }
         panel.allowsOtherFileTypes = true
         guard panel.runModal() == .OK, let url = panel.url else { return }
@@ -520,6 +520,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 c64.loadPRG(prg)
                 c64.typeIntoBuffer("RUN\n")
             }
+        case "bin", "rom":
+            guard C64.isFunctionROM(bytes) else {
+                let alert = NSAlert()
+                alert.messageText = "Not a C128 function ROM"
+                alert.informativeText = "\(url.lastPathComponent) is not a 32 KB ROM image with the CBM signature."
+                alert.runModal()
+                return
+            }
+            guard runner.c64.isC128 else {
+                let alert = NSAlert()
+                alert.messageText = "Function ROMs need a Commodore 128"
+                alert.informativeText = "Choose Machine ▸ Commodore 128, then open \(url.lastPathComponent) again."
+                alert.runModal()
+                return
+            }
+            // Into the internal function ROM socket: the C128 restarts and its KERNAL starts the ROM.
+            runner.perform { $0.setFunctionROM(bytes) }
         default:
             let alert = NSAlert()
             alert.messageText = "Unsupported file type"
@@ -940,6 +957,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         updateModelItems(c128: c128 != nil)
     }
 
+    /// Empties the C128's function ROM socket and restarts the machine.
+    @objc func removeFunctionROM(_ sender: Any?) {
+        runner.perform { $0.setFunctionROM(nil) }
+        updateModelItems(c128: runner.c64.isC128)
+    }
+
     @objc func pasteText(_ sender: Any?) {
         guard let text = NSPasteboard.general.string(forType: .string) else { return }
         runner.perform { $0.queueTyping(text) }
@@ -1135,6 +1158,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             mi("Open / Autostart…", #selector(openDocument(_:)), "o"),
             mi("Save Screenshot", #selector(saveScreenshot(_:)), "s", [.command, .shift]),
             mi("Remove Cartridge", #selector(removeCartridge(_:))),
+            mi("Remove Function ROM", #selector(removeFunctionROM(_:))),
             .separator(),
             mi("Close Window", #selector(NSWindow.performClose(_:)), "w"),
         ])
