@@ -73,4 +73,24 @@ final class FastLoadTests: XCTestCase {
         (screen, _) = runUntilReady(c64, "LOAD\"NOPE\",8", frames: 3000)
         XCTAssertTrue(screen.contains("FILE NOT FOUND"), screen)
     }
+
+    /// A file whose data starts on the directory track (a loader trick, as on the NEC Thunder
+    /// Blade disk) is not copied by the instant loader: the real drive loads it.
+    func testTrack18FileGoesToDrive() throws {
+        let c64 = try machine()
+        let d = D64Image.blank(name: "TRICKS", id: "01")
+        d.addFile(name: "LOADER", contents: DriveTests.helloPRG("TRACK 18"))
+        let entry = try XCTUnwrap(d.directory().first)
+        d.setSector(18, 2, d.sector(entry.track, entry.sector))   // move its one data block to 18/2
+        var dir = d.sector(18, 1)
+        dir[3] = 18; dir[4] = 2                                    // first entry -> 18/2
+        d.setSector(18, 1, dir)
+        XCTAssertEqual(d.directory().first?.track, 18)
+        c64.drive8!.insert(GCRDisk(d64: d))
+        let (loaded, frames) = runUntilReady(c64, "LOAD\"LOADER\",8", frames: 3000)
+        XCTAssertFalse(loaded.contains("ERROR"), loaded)
+        XCTAssertGreaterThanOrEqual(frames, 50, "went through the serial bus, not the instant loader")
+        let (screen, _) = runUntilReady(c64, "RUN", frames: 100)
+        XCTAssertTrue(screen.contains("TRACK 18"), screen)
+    }
 }

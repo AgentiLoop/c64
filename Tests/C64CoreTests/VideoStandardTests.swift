@@ -99,6 +99,24 @@ final class VideoStandardTests: XCTestCase {
         XCTAssertTrue(c64.autoStandard)
     }
 
+    /// Auto: the same late raster IRQ armed while interrupts stay off (loaders leave junk in
+    /// $D01A/$D012 under SEI) is not a program waiting for a PAL line: stays NTSC.
+    func testAutoIgnoresRasterIRQArmedWithInterruptsOff() throws {
+        guard let roms = ROMSet.load() else { throw XCTSkip("ROMs not installed") }
+        let c64 = C64(roms: roms)
+        c64.autoStandard = true
+        for _ in 0..<180 { c64.runFrame() }
+        var prg = VideoStandardTests.lateRasterIRQ
+        XCTAssertEqual(prg[2 + 0x22], 0x58)
+        prg[2 + 0x22] = 0xEA                                    // CLI -> NOP
+        c64.loadPRG(prg)
+        c64.queueTyping("SYS49408\n")
+        for _ in 0..<60 { c64.runFrame() }
+        XCTAssertTrue(c64.cpu.i)
+        XCTAssertEqual(c64.standard, .ntsc)
+        XCTAssertFalse(c64.cpu.jammed)
+    }
+
     /// $C000: screen off, then every frame from line 50 a 100-line raster-bar loop that writes $D020
     /// every `lineCycles` cycles (cycle-counted for a PAL (63) or NTSC (65) machine).
     static func rasterBars(lineCycles: Int) -> [UInt8] {

@@ -26,4 +26,20 @@ final class DriveFormatTests: XCTestCase {
         XCTAssertEqual(img.directory().map(\.name), ["PROG"])
         XCTAssertEqual(img.directory().first.map { img.readFile($0) }?.prefix(2), [0x01, 0x08])
     }
+
+    /// The same on drive 8: the stepper bug at the track 1 stop hit every 1541.
+    func testFormatAndSaveOnDrive8() throws {
+        guard let roms = ROMSet.load(), roms.drive1541 != nil else { throw XCTSkip("ROMs not installed") }
+        let c64 = C64(roms: roms)
+        c64.fastLoad = false
+        c64.standard = .ntsc
+        c64.drive8!.insert(GCRDisk(d64: D64Image.blank(name: "OLD")))
+        C64Autostart.ensureBooted(c64)
+        run(c64, "OPEN15,8,15,\"N:NEWDISK,AB\":CLOSE15\n", 6000)
+        run(c64, "10 PRINT\"HELLO\"\nSAVE\"PROG\",8\n", 2000)
+        let img = c64.drive8!.disk!.toD64()
+        XCTAssertEqual(img.diskName, "NEWDISK")
+        XCTAssertEqual(img.directory().map(\.name), ["PROG"])
+        XCTAssertEqual(img.directory().first.map { img.readFile($0) }?.prefix(2), [0x01, 0x08])
+    }
 }

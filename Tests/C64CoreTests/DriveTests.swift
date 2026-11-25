@@ -9,6 +9,29 @@ final class DriveTests: XCTestCase {
         return [0x01, 0x08, UInt8(next & 0xFF), UInt8(next >> 8), 10, 0] + body + [0, 0]
     }
 
+    /// A 1541 sees the C64's clock/data changes from the next cycle (cycle-counted 2-bit loaders);
+    /// the C64's own reads see them at once.
+    func testDriveSeesHostLinesNextCycle() {
+        let iec = IECBus()
+        iec.setC64Lines(atn: false, clock: true, data: true)
+        XCTAssertFalse(iec.clockLine)
+        XCTAssertFalse(iec.dataLine)
+        XCTAssertTrue(iec.clockLineForDrive)
+        XCTAssertTrue(iec.dataLineForDrive)
+        iec.latchHostLines()
+        XCTAssertFalse(iec.clockLineForDrive)
+        XCTAssertFalse(iec.dataLineForDrive)
+        iec.setC64Lines(atn: false, clock: false, data: false)
+        XCTAssertFalse(iec.clockLineForDrive, "a release also arrives a cycle late")
+        iec.latchHostLines()
+        XCTAssertTrue(iec.clockLineForDrive)
+        iec.setC64Lines(atn: false, clock: true, data: true)
+        iec.latchHostLines()
+        iec.reset()
+        XCTAssertTrue(iec.clockLineForDrive)
+        XCTAssertTrue(iec.dataLineForDrive)
+    }
+
     func testD64FileRoundTrip() {
         let d = D64Image.blank(name: "TEST DISK", id: "AB")
         let big = [UInt8](0..<255) + [UInt8](repeating: 7, count: 3000)

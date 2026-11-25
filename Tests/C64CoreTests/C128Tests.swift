@@ -204,12 +204,8 @@ final class C128Tests: XCTestCase {
         }
     }
 
-    /// A disk with a C128 boot sector (track 1 sector 0, "CBM") auto-starts at power-on:
-    /// the KERNAL prints "BOOTING <name>..." and runs the boot code in the sector.
-    func testAutobootDisk() throws {
-        guard let roms = ROMSet.load(), let c128 = roms.c128, roms.drive1541 != nil else {
-            throw XCTSkip("C128 or 1541 ROMs not installed")
-        }
+    /// A disk with a C128 boot sector (track 1 sector 0, "CBM", title AUTO) whose code prints "BOOT OK".
+    static func bootDisk() -> D64Image {
         let d = D64Image.blank(name: "BOOT DISK", id: "28")
         var sector = [UInt8](repeating: 0, count: 256)
         let header: [UInt8] = [0x43, 0x42, 0x4D, 0, 0, 0, 0] + Array("AUTO".utf8) + [0] + [0]   // CBM, no load, title, no file
@@ -221,17 +217,67 @@ final class C128Tests: XCTestCase {
         code.append(0x60)                                              // RTS
         sector.replaceSubrange(header.count..<header.count + code.count, with: code)
         d.setSector(1, 0, sector)
-        let c64 = C64(roms: roms)
-        c64.drive8!.insert(GCRDisk(d64: d))
-        c64.setC128(c128)
+        return d
+    }
+
+    /// Runs until the boot code has printed "BOOT OK" (or 1500 frames) and returns the screen.
+    func runUntilBooted(_ c64: C64) -> String {
         var s = ""
         for _ in 0..<1500 {
             c64.runFrame()
             s = screen(c64)
             if s.contains("BOOT OK") { break }
         }
+        return s
+    }
+
+    /// A disk with a C128 boot sector auto-starts at power-on:
+    /// the KERNAL prints "BOOTING <name>..." and runs the boot code in the sector.
+    func testAutobootDisk() throws {
+        guard let roms = ROMSet.load(), let c128 = roms.c128, roms.drive1541 != nil else {
+            throw XCTSkip("C128 or 1541 ROMs not installed")
+        }
+        let c64 = C64(roms: roms)
+        c64.drive8!.insert(GCRDisk(d64: C128Tests.bootDisk()))
+        c64.setC128(c128)
+        let s = runUntilBooted(c64)
         XCTAssertTrue(s.contains("BOOTING AUTO"), s)
         XCTAssertTrue(s.contains("BOOT OK"), s)
+    }
+
+    /// The same disk inserted into a C128 already at READY (as the app does) boots with BOOT.
+    func testBootCommandOnRunningC128() throws {
+        guard let roms = ROMSet.load(), let c128 = roms.c128, roms.drive1541 != nil else {
+            throw XCTSkip("C128 or 1541 ROMs not installed")
+        }
+        let c64 = C64(roms: roms)
+        c64.fastLoad = true
+        c64.setC128(c128)
+        for _ in 0..<300 { c64.runFrame() }
+        c64.drive8!.insert(GCRDisk(d64: C128Tests.bootDisk()), side1: nil)
+        C64Autostart.ensureBooted(c64)
+        c64.queueTyping("BOOT\n")
+        let s = runUntilBooted(c64)
+        XCTAssertTrue(s.contains("BOOTING AUTO"), s)
+        XCTAssertTrue(s.contains("BOOT OK"), s)
+    }
+
+    /// An idle 1571 on a C128 at READY goes to sleep: motor and LED off, nothing on the bus.
+    func testIdle1571Sleeps() throws {
+        guard let roms = ROMSet.load(), let c128 = roms.c128 else { throw XCTSkip("C128 ROMs not installed") }
+        let c64 = C64(roms: roms)
+        c64.fastLoad = true
+        c64.standard = .ntsc
+        c64.setC128(c128)
+        for _ in 0..<900 { c64.runFrame() }
+        let d = try XCTUnwrap(c64.drive8)
+        let activity = c64.iec.activity
+        for _ in 0..<120 { c64.runFrame() }
+        XCTAssertTrue(d.is1571)
+        XCTAssertTrue(d.asleep)
+        XCTAssertFalse(d.motorOn)
+        XCTAssertFalse(d.ledOn)
+        XCTAssertEqual(c64.iec.activity, activity)
     }
 
     /// Boots in 80 columns and returns the machine with the VDC set up by the KERNAL.
@@ -540,106 +586,6 @@ extension C128Tests {
                 }
             })
         }.joined(separator: "\n")
-    }
-
-    /// Boots CP/M 3.0 from a CP/M system disk (GCR, $C128_CPM_D64) on the 1571 through the Z80 and
-    /// lists the directory with DIR.
-    func testBootsCPM() throws {
-        guard let path = ProcessInfo.processInfo.environment["C128_CPM_D64"],
-              let data = FileManager.default.contents(atPath: path),
-              let image = D64Image(data: [UInt8](data)) else { throw XCTSkip("C128_CPM_D64 not set") }
-        guard let roms = ROMSet.load(), let c128 = roms.c128, roms.drive1571 != nil else { throw XCTSkip("ROMs") }
-        let c64 = C64(roms: roms)
-        c64.setC128(c128)
-        c64.drive8!.insert(GCRDisk(d64: image))
-        c64.reset()
-        for _ in 0..<1500 where !cpmScreen(c64).contains("A>") { c64.runFrame() }
-        var s = cpmScreen(c64)
-        XCTAssertTrue(s.contains("CP/M 3.0"), s)
-        XCTAssertTrue(s.contains("A>"), s)
-        XCTAssertTrue(c64.c128!.z80Active)
-        for key in [C64Key.d, .i, .r, .ret] {
-            c64.setKey(key, pressed: true)
-            for _ in 0..<4 { c64.runFrame() }
-            c64.setKey(key, pressed: false)
-            for _ in 0..<4 { c64.runFrame() }
-        }
-        for _ in 0..<600 { c64.runFrame() }
-        s = cpmScreen(c64)
-        XCTAssertTrue(s.contains("COM"), s)
-        print(s)
-    }
-}
-
-extension C128Tests {
-    /// Types on the CP/M keyboard (lower-case letters, digits not needed).
-    func typeCPM(_ c64: C64, _ text: String) {
-        let letters: [C64Key] = [.a, .b, .c, .d, .e, .f, .g, .h, .i, .j, .k, .l, .m, .n, .o, .p, .q, .r, .s, .t, .u, .v, .w, .x, .y, .z]
-        for ch in text {
-            let k: C64Key
-            switch ch {
-            case "\r": k = .ret
-            case " ": k = .space
-            case ".": k = .period
-            case "=": k = .equals
-            default: k = letters[Int(ch.asciiValue! - 97)]
-            }
-            c64.setKey(k, pressed: true)
-            for _ in 0..<4 { c64.runFrame() }
-            c64.setKey(k, pressed: false)
-            for _ in 0..<4 { c64.runFrame() }
-        }
-    }
-
-    func pressKey(_ c64: C64, _ k: C64Key) {
-        c64.setKey(k, pressed: true)
-        for _ in 0..<4 { c64.runFrame() }
-        c64.setKey(k, pressed: false)
-        for _ in 0..<30 { c64.runFrame() }
-    }
-
-    /// MFM on the 1571: after booting CP/M from GCR, a Kaypro II disk (WD1770, 10 × 512-byte
-    /// sectors) is inserted; CP/M asks for the format, lists, types and renames a file on it.
-    func testCPMReadsAndWritesMFMDisk() throws {
-        guard let path = ProcessInfo.processInfo.environment["C128_CPM_D64"],
-              let data = FileManager.default.contents(atPath: path),
-              let image = D64Image(data: [UInt8](data)) else { throw XCTSkip("C128_CPM_D64 not set") }
-        guard let roms = ROMSet.load(), let c128 = roms.c128, roms.drive1571 != nil else { throw XCTSkip("ROMs") }
-        let c64 = C64(roms: roms)
-        c64.setC128(c128)
-        c64.drive8!.insert(GCRDisk(d64: image))
-        c64.reset()
-        for _ in 0..<1500 where !cpmScreen(c64).contains("A>") { c64.runFrame() }
-
-        // Kaypro II: 1K blocks, one system track; directory at cylinder 1 sector 0, block 2 = sector 4.
-        let mfm = MFMImage(geometry: MFMImage.formats[0])
-        var dir = [UInt8](repeating: 0xE5, count: 512)
-        let entry: [UInt8] = [0] + Array("HELLO   TXT".utf8) + [0, 0, 0, 1, 2] + [UInt8](repeating: 0, count: 15)
-        dir.replaceSubrange(0..<32, with: entry)
-        var file = Array("MFM WORKS\r\n".utf8)
-        file += [UInt8](repeating: 0x1A, count: 512 - file.count)
-        mfm.setSector(cyl: 1, side: 0, sector: 0, dir)
-        mfm.setSector(cyl: 1, side: 0, sector: 4, file)
-        c64.drive8!.insert(mfm: mfm)
-
-        c64.setKey(.control, pressed: true); typeCPM(c64, "c"); c64.setKey(.control, pressed: false)
-        for _ in 0..<200 { c64.runFrame() }
-        typeCPM(c64, "dir\r")
-        for _ in 0..<300 { c64.runFrame() }
-        // Kaypro II and IV look alike: pick II on the status line.
-        for _ in 0..<6 where !cpmScreen(c64).contains("KayPro II ") { pressKey(c64, .right128) }
-        XCTAssertTrue(cpmScreen(c64).contains("KayPro II "), cpmScreen(c64))
-        pressKey(c64, .ret)
-        for _ in 0..<600 { c64.runFrame() }
-        XCTAssertTrue(cpmScreen(c64).contains("A: HELLO    TXT"), cpmScreen(c64))
-        typeCPM(c64, "type hello.txt\r")
-        for _ in 0..<600 { c64.runFrame() }
-        XCTAssertTrue(cpmScreen(c64).contains("MFM WORKS"), cpmScreen(c64))
-        typeCPM(c64, "ren bye.txt=hello.txt\r")
-        for _ in 0..<600 { c64.runFrame() }
-        let renamed = mfm.sector(cyl: 1, side: 0, sector: 0)!
-        XCTAssertEqual(String(decoding: renamed[1..<12], as: UTF8.self), "BYE     TXT", cpmScreen(c64))
-        XCTAssertTrue(mfm.dirty)
     }
 }
 

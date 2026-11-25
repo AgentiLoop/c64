@@ -20,3 +20,6 @@ games/
 *.prg
 *.crt
 .wrangler/
+
+# Tests that need third-party media (game disks, CP/M system disk) — local only.
+Tests/C64CoreTests/Local/
