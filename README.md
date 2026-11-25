@@ -42,11 +42,11 @@ Machine ▸ Reset Holding C= (⌥⌘R), to start a C128 in C64 mode. It needs th
 <table>
   <tr>
     <td width="50%"><img alt="Bucket Wars 1.3 title screen on the C128's 80-column display" src="docs/c128-bucketwars-title.png" /></td>
-    <td width="50%"><img alt="Bucket Wars 1.3 map screen on the C128's 80-column display" src="docs/c128-bucketwars-map.png" /></td>
+    <td width="50%"><img alt="GEOS 128 2.0 deskTop on the C128's 80-column display, booted from the GEOS function ROM" src="docs/c128-geos-desktop.png" /></td>
   </tr>
   <tr>
     <td align="center">Bucket Wars 1.3 title screen, 80 columns</td>
-    <td align="center">Bucket Wars 1.3 map, 80 columns</td>
+    <td align="center">GEOS 128 2.0 deskTop, 80 columns, 1351 mouse</td>
   </tr>
 </table>
 
