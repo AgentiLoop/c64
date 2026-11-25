@@ -64,6 +64,35 @@ final class C128Tests: XCTestCase {
         XCTAssertTrue(screen(c64).contains("38911 BASIC BYTES FREE"), screen(c64))
     }
 
+    /// A 32K ROM in the internal function ROM socket: the KERNAL finds its "CBM" signature at
+    /// power-on and calls its cold start, and the MMU maps it at $8000–$FFFF (ROM, not character
+    /// ROM, at $D000 with I/O off).
+    func testInternalFunctionROM() throws {
+        let c64 = try makeMachine()
+        var rom = [UInt8](repeating: 0xEA, count: 0x8000)
+        rom.replaceSubrange(0..<10, with: [0x4C, 0x10, 0x80, 0x4C, 0x10, 0x80, 0xFF, 0x43, 0x42, 0x4D])
+        rom.replaceSubrange(0x10..<0x16, with: [0xA9, 0xA5, 0x8D, 0x00, 0x0B, 0x60])   // LDA #$A5: STA $0B00: RTS
+        rom[0x5000] = 0x5D; rom[0x7000] = 0x7E
+        XCTAssertTrue(C64.isFunctionROM(rom))
+        XCTAssertFalse(C64.isFunctionROM([UInt8](repeating: 0xEA, count: 0x8000)))
+        c64.setFunctionROM(rom)
+        for _ in 0..<300 { c64.runFrame() }
+        XCTAssertEqual(c64.ram[0x0B00], 0xA5, "the KERNAL did not call the function ROM's cold start")
+        XCTAssertTrue(screen(c64).contains("READY."), screen(c64))
+        c64.poke(0xFF00, 0x17)                    // internal function ROM at $8000 and $C000, I/O off
+        XCTAssertEqual(c64.peek(0x8007), 0x43)
+        XCTAssertEqual(c64.peek(0xD000), 0x5D)
+        XCTAssertEqual(c64.peek(0xF000), 0x7E)
+        c64.poke(0xFF00, 0x2B)                    // external function ROM: nothing there
+        XCTAssertEqual(c64.peek(0x8007), 0xFF)
+        c64.poke(0xFF00, 0)
+        XCTAssertEqual(c64.peek(0x8007), c64.c128!.roms.basicHi[7])
+        c64.setFunctionROM(nil)
+        c64.poke(0xFF00, 0x17)
+        XCTAssertEqual(c64.peek(0x8007), 0xFF)
+        c64.poke(0xFF00, 0)
+    }
+
     /// With the 40/80 key down the C128 starts on the VDC; BASIC works there and the picture is drawn.
     func testBootsIn80Columns() throws {
         let c64 = try makeMachine()

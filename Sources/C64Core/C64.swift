@@ -207,6 +207,8 @@ public final class C64: CPUBus {
     var typeQueue: [UInt8] = []
     /// C128 mode (MMU, 128K, C128 ROMs) when set; see `setC128`.
     var c128: C128Memory? { didSet { c128U = c128.map(Unmanaged.passUnretained) } }
+    /// The C128's internal function ROM (32K), kept across model changes; see `setFunctionROM`.
+    public internal(set) var functionROM: [UInt8]?
     // Non-retaining copies of the optional parts that are looked at every cycle: reading a strong
     // (or unowned) optional property retains and releases it, which costs more than the work itself.
     private var c128U: Unmanaged<C128Memory>?

@@ -52,6 +52,8 @@ final class C128Memory {
     var mode80 = false
     /// A program running from RAM has written to the VDC ($D601).
     var programUsesVDC = false
+    /// The 32K ROM in the internal function ROM socket (U36), seen at $8000–$FFFF; nil = empty socket.
+    private(set) var functionROM: Memory?
 
     init(roms: C128ROMs) {
         self.roms = roms
@@ -59,7 +61,15 @@ final class C128Memory {
         basicHi = Memory(roms.basicHi); chargen = Memory(roms.chargen)
     }
 
-    deinit { for m in [ram1, kernal, basicLo, basicHi, chargen] { m.deallocate() } }
+    deinit {
+        for m in [ram1, kernal, basicLo, basicHi, chargen] { m.deallocate() }
+        functionROM?.deallocate()
+    }
+
+    func setFunctionROM(_ bytes: [UInt8]?) {
+        functionROM?.deallocate()
+        functionROM = bytes.map { Memory($0) }
+    }
 
     func reset() {
         cr = 0; pcr = [0, 0, 0, 0]; mcr = 0; rcr = 0; fast = false; halfCycle = false; keyLines = 0xFF
@@ -121,6 +131,7 @@ extension C64 {
     /// Commodore 128 (C128 mode) when its ROMs are given, the C64 when nil. Resets the machine.
     public func setC128(_ roms: C128ROMs?) {
         c128 = roms.map(C128Memory.init)
+        c128?.setFunctionROM(functionROM)
         if let m = c128 { wireZ80(m) }
         c128?.vdc.clockHz = clockHz
         wireFastSerial()
@@ -129,6 +140,19 @@ extension C64 {
     }
 
     public var isC128: Bool { c128 != nil }
+
+    /// Puts a 32K ROM into the C128's internal function ROM socket (nil empties it) and resets the
+    /// machine. At power-on the KERNAL finds it by the "CBM" signature and starts it.
+    public func setFunctionROM(_ rom: [UInt8]?) {
+        functionROM = rom
+        c128?.setFunctionROM(rom)
+        reset()
+    }
+
+    /// A 32K image with the "CBM" signature the C128 KERNAL looks for at $8007 or $C007.
+    public static func isFunctionROM(_ bytes: [UInt8]) -> Bool {
+        bytes.count == 0x8000 && [0x0007, 0x4007].contains { Array(bytes[$0..<$0 + 3]) == [0x43, 0x42, 0x4D] }
+    }
 
     /// C128 fast serial: CIA1's serial port is connected to the bus (SP = DATA, CNT = SRQ), its
     /// direction set by MMU $D505 bit 3 (FSDIR, 1 = output). The C64 has no such connection.
@@ -189,14 +213,16 @@ extension C64 {
         case 0x8000..<0xC000:
             switch (cr >> 2) & 3 {
             case 0: return m.basicHi[a - 0x8000]
+            case 1: return m.functionROM?[a - 0x8000] ?? 0xFF  // internal function ROM
             case 3: break
-            default: return 0xFF                              // no function ROMs
+            default: return 0xFF                              // no external function ROM
             }
         case 0xC000...0xFFFF:
             switch (cr >> 4) & 3 {
             case 0:
                 if a >> 12 == 0xD { return m.chargen[a & 0x0FFF] }
                 return m.kernal[a - 0xC000]
+            case 1: return m.functionROM?[a - 0x8000] ?? 0xFF
             case 3: break
             default: return 0xFF
             }
