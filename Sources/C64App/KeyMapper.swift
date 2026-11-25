@@ -118,10 +118,14 @@ final class KeyMapper {
 
     func flagsChanged(_ event: NSEvent) {
         let f = event.modifierFlags
-        macShift = f.contains(.shift)
+        // With ⌘ down the modifiers belong to a Mac shortcut (⇧⌘4 screenshot, ⇧⌘R …), not the C64.
+        // Their key-ups often go to another app (the screenshot crosshair), which left SHIFT held
+        // down in the C64 for as long as the crosshair was on screen.
+        let mac = f.contains(.command)
+        macShift = f.contains(.shift) && !mac
         // Device-dependent bits: 0x20 = left option (C= key), 0x40 = right option (joystick fire).
-        apply(.commodore, f.rawValue & 0x20 != 0)
-        apply(.control, f.contains(.control))
+        apply(.commodore, f.rawValue & 0x20 != 0 && !mac)
+        apply(.control, f.contains(.control) && !mac)
         joystick { rightOption = f.rawValue & 0x40 != 0 }
         updateShift()
     }
