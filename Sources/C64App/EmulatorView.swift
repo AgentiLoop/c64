@@ -126,7 +126,112 @@ final class EmulatorView: MTKView, MTKViewDelegate {
     }
 
     override func keyUp(with event: NSEvent) { keyMapper?.keyUp(event) }
-    override func flagsChanged(with event: NSEvent) { keyMapper?.flagsChanged(event) }
+    override func flagsChanged(with event: NSEvent) {
+        if mouseCaptured && event.modifierFlags.contains(.command) { releaseMouse() }   // ⌘ gives the pointer back
+        keyMapper?.flagsChanged(event)
+    }
+
+    // MARK: 1351 mouse
+
+    /// The 1351 mouse in port 1 follows the Mac mouse/trackpad. A click captures the pointer (hidden,
+    /// held in place so movement never stops at a screen edge); ⌘ or leaving the window releases it.
+    var mouseEnabled = false { didSet { if !mouseEnabled { releaseMouse() } } }
+    /// Mouse counts per point of pointer movement.
+    var mouseSpeed: Double = 0.5
+    private(set) var mouseCaptured = false
+    /// Sub-count movement carried over to the next event, so slow movement is not lost.
+    private var mouseRemainder = (x: 0.0, y: 0.0)
+
+    private func captureMouse() {
+        guard !mouseCaptured, let window else { return }
+        mouseCaptured = true
+        mouseRemainder = (0, 0)
+        window.acceptsMouseMovedEvents = true
+        NSCursor.hide()
+        CGAssociateMouseAndMouseCursorPosition(0)
+    }
+
+    func releaseMouse() {
+        guard mouseCaptured else { return }
+        mouseCaptured = false
+        CGAssociateMouseAndMouseCursorPosition(1)
+        NSCursor.unhide()
+        runner?.perform { $0.mouseLeft = false; $0.mouseRight = false }
+    }
+
+    private func moveMouse(_ event: NSEvent) {
+        guard mouseCaptured else { return }
+        mouseRemainder.x += Double(event.deltaX) * mouseSpeed
+        mouseRemainder.y -= Double(event.deltaY) * mouseSpeed          // AppKit deltaY is positive downward
+        let dx = Int(mouseRemainder.x.rounded(.towardZero)), dy = Int(mouseRemainder.y.rounded(.towardZero))
+        guard dx != 0 || dy != 0 else { return }
+        mouseRemainder.x -= Double(dx); mouseRemainder.y -= Double(dy)
+        runner?.perform { $0.moveMouse(dx: dx, dy: dy) }
+    }
+
+    private func setButton(right: Bool, _ down: Bool) {
+        runner?.perform { if right { $0.mouseRight = down } else { $0.mouseLeft = down } }
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        guard mouseEnabled else { return super.mouseDown(with: event) }
+        if !mouseCaptured { captureMouse(); return }                    // the capturing click is not a C64 click
+        setButton(right: false, true)
+    }
+    override func mouseUp(with event: NSEvent) {
+        guard mouseCaptured else { return super.mouseUp(with: event) }
+        setButton(right: false, false)
+    }
+    override func rightMouseDown(with event: NSEvent) {
+        guard mouseCaptured else { return super.rightMouseDown(with: event) }
+        setButton(right: true, true)
+    }
+    override func rightMouseUp(with event: NSEvent) {
+        guard mouseCaptured else { return super.rightMouseUp(with: event) }
+        setButton(right: true, false)
+    }
+    override func mouseMoved(with event: NSEvent) { moveMouse(event) }
+    override func mouseDragged(with event: NSEvent) { moveMouse(event) }
+    override func rightMouseDragged(with event: NSEvent) { moveMouse(event) }
+
+    // MARK: Scrolling → cursor keys
+
+    /// Scroll wheel and two-finger trackpad scrolling become CRSR key taps (up/down, left/right),
+    /// one per notch or per `scrollStep` points of a trackpad swipe, sent one after another.
+    private var scrollRemainder = (x: 0.0, y: 0.0)
+    private var pendingTaps: [(key: C64Key, shift: Bool)] = []
+    private var tapping = false
+
+    override func scrollWheel(with event: NSEvent) {
+        guard mouseEnabled else { return super.scrollWheel(with: event) }
+        if event.phase == .began || event.phase == .mayBegin { scrollRemainder = (0, 0) }
+        let step = event.hasPreciseScrollingDeltas ? 16.0 : 1.0
+        scrollRemainder.x += Double(event.scrollingDeltaX)
+        scrollRemainder.y += Double(event.scrollingDeltaY)
+        // Positive deltas scroll toward the top/left of a document (the user's scroll direction applied).
+        while scrollRemainder.y >= step { scrollRemainder.y -= step; queueTap(.cursorDown, shift: true) }
+        while scrollRemainder.y <= -step { scrollRemainder.y += step; queueTap(.cursorDown, shift: false) }
+        while scrollRemainder.x >= step { scrollRemainder.x -= step; queueTap(.cursorRight, shift: true) }
+        while scrollRemainder.x <= -step { scrollRemainder.x += step; queueTap(.cursorRight, shift: false) }
+    }
+
+    private func queueTap(_ key: C64Key, shift: Bool) {
+        guard pendingTaps.count < 8 else { return }                     // momentum must not pile up
+        pendingTaps.append((key, shift))
+        if !tapping { nextTap() }
+    }
+
+    /// Holds each key for 40 ms (two or three frames, long enough for a keyboard scan) with a 30 ms gap.
+    private func nextTap() {
+        guard !pendingTaps.isEmpty, let runner else { tapping = false; return }
+        tapping = true
+        let tap = pendingTaps.removeFirst()
+        runner.perform { if tap.shift { $0.setKey(.rightShift, pressed: true) }; $0.setKey(tap.key, pressed: true) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.04) { [weak self] in
+            runner.perform { $0.setKey(tap.key, pressed: false); if tap.shift { $0.setKey(.rightShift, pressed: false) } }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) { self?.nextTap() }
+        }
+    }
 
     // MARK: Drag & drop media
 

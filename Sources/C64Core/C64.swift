@@ -69,6 +69,12 @@ public final class C64: CPUBus {
     /// Joystick state, bits: 0 up, 1 down, 2 left, 3 right, 4 fire (1 = active).
     public var joystick1: UInt8 = 0
     public var joystick2: UInt8 = 0
+    /// A Commodore 1351 mouse in control port 1 (see Mouse1351.swift); its buttons below.
+    public var mouse1351 = false
+    public var mouseLeft = false
+    public var mouseRight = false
+    /// Mouse counts moved by the host, and the position the POT registers last reported.
+    var mouseX = 0, mouseY = 0, potX = 0, potY = 0
 
     /// IEC serial bus shared with disk drives.
     public let iec = IECBus()
@@ -491,7 +497,7 @@ public final class C64: CPUBus {
         }
         switch a >> 8 {
         case 0xD0...0xD3: return vic.read(a)
-        case 0xD4...0xD7: return sid.read(a & 0x1F)
+        case 0xD4...0xD7: return readSID(a & 0x1F)
         case 0xD8...0xDB: return colorRAM[a & 0x3FF] | 0xF0
         case 0xDC: return cia1.read(a)
         case 0xDD: return cia2.read(a)
@@ -538,11 +544,11 @@ public final class C64: CPUBus {
         if let k = c128?.keyLines, k & 7 != 7 {             // C128 extra keys, VIC-IIe $D02F
             for row in 8..<11 where k & (1 << (row - 8)) == 0 { v &= ~keyMatrix[row] }
         }
-        return v & ~joystick1
+        return v & ~port1Lines
     }
 
     private func keyboardPortA() -> UInt8 {
-        let pb = cia1.portBOutput & ~joystick1
+        let pb = cia1.portBOutput & ~port1Lines
         var v: UInt8 = 0xFF
         for row in 0..<8 where keyMatrix[row] & ~pb != 0 { v &= ~(1 << row) }
         return v & ~joystick2

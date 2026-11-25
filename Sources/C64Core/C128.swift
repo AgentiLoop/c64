@@ -194,7 +194,7 @@ extension C64 {
     /// The I/O chips at $D000–$DFFF (8502 with I/O banked in, or Z80 IN).
     func ioRead128(_ m: C128Memory, _ a: Int) -> UInt8 {
         switch a >> 8 {
-        case 0xD4: return sid.read(a & 0x1F)
+        case 0xD4: return readSID(a & 0x1F)
         case 0xD5: return m.mmuRead(a & 0xFF)
         case 0xD6: return m.vdc.read(a)
         case 0xD7: return 0xFF

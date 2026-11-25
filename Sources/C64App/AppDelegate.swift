@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var warpItem: NSMenuItem!
     var cursorJoyItem: NSMenuItem!
     var swapItem: NSMenuItem!
+    var mouseItem: NSMenuItem?
     /// The D64 file currently in drive 8 and its GCR disk (written back when changed).
     var diskURL: URL?
     var disk: GCRDisk?
@@ -169,6 +170,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         // Title-bar status (drive LED, tape, FPS) four times a second.
         statusTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in self?.frameTick() }
         observeControllers()
+        setMouse(UserDefaults.standard.bool(forKey: "Mouse1351"))
+        if UserDefaults.standard.object(forKey: "MouseSpeed") != nil { view.mouseSpeed = UserDefaults.standard.double(forKey: "MouseSpeed") }
         audio.start()
         runner.start()
         if optionAtLaunch {
@@ -183,6 +186,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 
     func applicationWillTerminate(_ notification: Notification) {
+        view?.releaseMouse()
         saveTapeIfNeeded()   // needs the emulation thread still running
         runner?.stop()
         saveDiskIfNeeded()
@@ -198,6 +202,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func windowDidResignKey(_ notification: Notification) {
+        view?.releaseMouse()
         keyMapper?.releaseAll()
         runner?.perform { $0.releaseAllKeys(); $0.joystick1 = 0; $0.joystick2 = 0 }
     }
@@ -1110,6 +1115,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         updateJoystick()
     }
 
+    /// 1351 mouse in port 1 (GEOS and other mouse software).
+    private func setMouse(_ on: Bool) {
+        view.mouseEnabled = on
+        mouseItem?.state = on ? .on : .off
+        runner.perform { $0.mouse1351 = on; $0.mouseLeft = false; $0.mouseRight = false }
+    }
+
+    @objc func toggleMouse(_ sender: Any?) {
+        let on = !view.mouseEnabled
+        setMouse(on)
+        UserDefaults.standard.set(on, forKey: "Mouse1351")
+    }
+
+    @objc func setMouseSpeed(_ sender: NSMenuItem) {
+        view.mouseSpeed = Double(sender.tag) / 100
+        sender.menu?.items.forEach { $0.state = $0 === sender ? .on : .off }
+        UserDefaults.standard.set(view.mouseSpeed, forKey: "MouseSpeed")
+    }
+
     @objc func toggleCursorJoystick(_ sender: Any?) {
         keyMapper.cursorKeysAsJoystick.toggle()
         cursorJoyItem.state = keyMapper.cursorKeysAsJoystick ? .on : .off
@@ -1211,7 +1235,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         cursorJoyItem.state = UserDefaults.standard.bool(forKey: "CursorKeysJoystick") ? .on : .off
         let fireUpItem = mi("Fire Button Is Up (Jump)", #selector(toggleFireIsUp(_:)))
         fireUpItem.state = UserDefaults.standard.bool(forKey: "FireIsUp") ? .on : .off
-        add("Input", [swapItem, cursorJoyItem, fireUpItem])
+        mouseItem = mi("1351 Mouse in Port 1 (Click to Capture, ⌘ to Release)", #selector(toggleMouse(_:)), "m", [.command, .shift])
+        mouseItem?.state = UserDefaults.standard.bool(forKey: "Mouse1351") ? .on : .off
+        let speedMenu = NSMenu(title: "Mouse Speed")
+        for (name, tag) in [("Slow", 25), ("Normal", 50), ("Fast", 100)] {
+            let i = mi(name, #selector(setMouseSpeed(_:)))
+            i.tag = tag
+            let saved = UserDefaults.standard.object(forKey: "MouseSpeed") as? Double ?? 0.5
+            i.state = tag == Int((saved * 100).rounded()) ? .on : .off
+            speedMenu.addItem(i)
+        }
+        let speedItem = NSMenuItem(title: "Mouse Speed", action: nil, keyEquivalent: "")
+        speedItem.submenu = speedMenu
+        add("Input", [swapItem, cursorJoyItem, fireUpItem, .separator(), mouseItem!, speedItem])
         fastLoadItem = mi("Instant Load (Skip Disk Wait)", #selector(toggleFastLoad(_:)), "l")
         diskWarpItem = mi("Warp While Disk Motor Runs", #selector(toggleDiskWarp(_:)))
         drive9Is1541Item = mi("Drive 9 Is a 1541 (Two-Disk Games)", #selector(toggleDrive9Is1541(_:)))
