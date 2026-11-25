@@ -17,6 +17,25 @@ which keeps the app up to date from GitHub releases.
   </tr>
 </table>
 
+<table>
+  <tr>
+    <td width="50%"><img alt="The C64 at READY" src="docs/c64-basic.png" /></td>
+    <td width="50%"><img alt="The C128's 40-column VIC-II screen at READY" src="docs/c128-40col.png" /></td>
+  </tr>
+  <tr>
+    <td align="center">Commodore 64, BASIC V2</td>
+    <td align="center">Commodore 128, 40 columns</td>
+  </tr>
+  <tr>
+    <td width="50%"><img alt="The C128's 80-column VDC screen at READY" src="docs/c128-80col.png" /></td>
+    <td width="50%"><img alt="Laser Eagle by Todd Bruss running on the C64" src="docs/c64-laser-eagle.png" /></td>
+  </tr>
+  <tr>
+    <td align="center">Commodore 128, 80 columns</td>
+    <td align="center">Laser Eagle by Todd Bruss</td>
+  </tr>
+</table>
+
 ## Quick start
 
 1. Download `C64.app.zip` from the [releases page](https://github.com/AgentiLoop/c64/releases/latest),
