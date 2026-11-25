@@ -15,7 +15,15 @@ final class EmulatorView: MTKView, MTKViewDelegate {
 
     private let queue: MTLCommandQueue
     private let pipeline: MTLRenderPipelineState
-    private var texture: MTLTexture?
+    /// Three textures in rotation: a new picture is always copied into one the GPU isn't reading.
+    /// Copying into the texture an earlier, not yet finished command buffer still samples (which
+    /// happens when presentation stalls, e.g. while the screenshot selection is on screen) showed a
+    /// mix of two pictures for a frame.
+    private var textures: [MTLTexture?] = [nil, nil, nil]
+    private var current = 0
+    private var texture: MTLTexture? { textures[current] }
+    /// Command buffers in flight, at most one fewer than the textures.
+    private let inFlight = DispatchSemaphore(value: 2)
     private var frameSerial = -1
     private var showing80 = false
 
@@ -79,14 +87,16 @@ final class EmulatorView: MTKView, MTKViewDelegate {
         var uploaded = false
         runner.withFrame(newerThan: &frameSerial) { bytes, w, h, eighty in
             showing80 = eighty
-            if texture?.width != w || texture?.height != h {
+            let next = (current + 1) % textures.count
+            if textures[next]?.width != w || textures[next]?.height != h {
                 let desc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm,
                                                                     width: w, height: h, mipmapped: false)
                 desc.usage = .shaderRead
-                texture = device.makeTexture(descriptor: desc)
+                textures[next] = device.makeTexture(descriptor: desc)
             }
             guard let base = bytes.baseAddress, bytes.count >= w * h * 4 else { return }
-            texture?.replace(region: MTLRegionMake2D(0, 0, w, h), mipmapLevel: 0,
+            current = next
+            textures[next]?.replace(region: MTLRegionMake2D(0, 0, w, h), mipmapLevel: 0,
                              withBytes: base, bytesPerRow: w * 4)
             uploaded = true
         }
@@ -94,6 +104,13 @@ final class EmulatorView: MTKView, MTKViewDelegate {
     }
 
     func draw(in view: MTKView) {
+        // Both earlier pictures still on the GPU: try again shortly instead of blocking the main thread.
+        guard inFlight.wait(timeout: .now()) == .success else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.008) { [weak self] in self?.needsDisplay = true }
+            return
+        }
+        var committed = false
+        defer { if !committed { inFlight.signal() } }
         // Nothing new: leave the last presented picture on screen instead of drawing it again.
         guard uploadFrame() || needsRedraw else { return }
         needsRedraw = false
@@ -113,7 +130,10 @@ final class EmulatorView: MTKView, MTKViewDelegate {
         }
         encoder.endEncoding()
         buffer.present(drawable)
+        let done = inFlight
+        buffer.addCompletedHandler { _ in done.signal() }
         buffer.commit()
+        committed = true
     }
 
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) { needsRedraw = true }
