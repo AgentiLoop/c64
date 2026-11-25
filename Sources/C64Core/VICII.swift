@@ -29,21 +29,30 @@ public final class VICII {
         p.initialize(repeating: 0xFF000000, count: screenWidth * screenHeight)
         return p
     }()
-    /// A copy of the current picture (384×272, 0xAARRGGBB).
-    /// True if `buffer` already holds exactly the current picture.
+    /// The last completed picture, copied from `pixels` when the beam wraps to line 0. The machine
+    /// runs in slices that end anywhere in a frame; reading `pixels` then would give the top of the
+    /// frame being drawn over the bottom of the previous one (moving graphics slant at the split).
+    private let completed: UnsafeMutablePointer<UInt32> = {
+        let p = UnsafeMutablePointer<UInt32>.allocate(capacity: screenWidth * screenHeight)
+        p.initialize(repeating: 0xFF000000, count: screenWidth * screenHeight)
+        return p
+    }()
+
+    /// True if `buffer` already holds exactly the last completed picture.
     public func frameEquals(_ buffer: [UInt32]) -> Bool {
         let n = VICII.screenWidth * VICII.screenHeight
         guard buffer.count == n else { return false }
-        return buffer.withUnsafeBufferPointer { memcmp($0.baseAddress!, pixels, n * 4) == 0 }
+        return buffer.withUnsafeBufferPointer { memcmp($0.baseAddress!, completed, n * 4) == 0 }
     }
 
-    /// Copies the current picture into `buffer` (resized to 384×272 if needed) without allocating.
+    /// Copies the last completed picture into `buffer` (resized to 384×272 if needed) without allocating.
     public func copyFrame(into buffer: inout [UInt32]) {
         let n = VICII.screenWidth * VICII.screenHeight
         if buffer.count != n { buffer = [UInt32](repeating: 0, count: n) }
-        buffer.withUnsafeMutableBufferPointer { $0.baseAddress!.update(from: pixels, count: n) }
+        buffer.withUnsafeMutableBufferPointer { $0.baseAddress!.update(from: completed, count: n) }
     }
-    public var frameBuffer: [UInt32] { Array(UnsafeBufferPointer(start: pixels, count: VICII.screenWidth * VICII.screenHeight)) }
+    /// A copy of the last completed picture (384×272, 0xAARRGGBB).
+    public var frameBuffer: [UInt32] { Array(UnsafeBufferPointer(start: completed, count: VICII.screenWidth * VICII.screenHeight)) }
     public var frameCount = 0
     public var onFrame: (() -> Void)?
 
@@ -182,7 +191,7 @@ public final class VICII {
 
     public init() {}
     deinit {
-        pixels.deallocate(); pal.deallocate()
+        pixels.deallocate(); completed.deallocate(); pal.deallocate()
         regs.deallocate(); lineChars.deallocate(); lineColors.deallocate(); lineGfx.deallocate()
         lineGfxValid.deallocate(); spriteDMA.deallocate(); spriteDisplay.deallocate(); mc.deallocate()
         mcbase.deallocate(); expFF.deallocate(); spriteFetch.deallocate(); spriteData.deallocate()
@@ -450,6 +459,7 @@ public final class VICII {
             if autoStandard && imr & 0x01 != 0 && rasterCompare >= 263 && irqsTaken { palHint = true }
             if raster >= linesPerFrame {
                 if standard == .ntsc { fillUnusedLines() }
+                if drawing { completed.update(from: pixels, count: VICII.screenWidth * VICII.screenHeight) }
                 raster = 0
                 vcbase = 0
                 if autoStandard { autoSwitchStandard() }
