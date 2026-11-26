@@ -3,132 +3,39 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>C64 — a Commodore 64 emulator for macOS</title>
+<title>C64 — Commodore 64 &amp; 128 for your Mac</title>
 <meta name="description" content="A native Swift/AppKit Commodore 64 emulator for macOS: cycle-exact 6510, VIC-II, SID, true 1541 and 1581 drive emulation, Datasette, instant loading. Free and open source.">
 <link rel="canonical" href="https://c64.xcf.ai/">
-<meta property="og:title" content="C64 — a Commodore 64 emulator for macOS">
+<meta property="og:title" content="C64 — Commodore 64 &amp; 128 for your Mac">
 <meta property="og:description" content="Native Swift/AppKit C64 emulator with true 1541/1581 drive emulation. Free and open source.">
 <meta property="og:image" content="https://c64.xcf.ai/screenshot.jpg">
 <meta property="og:url" content="https://c64.xcf.ai/">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <style>
-  :root { --c64-blue: #352879; --c64-light: #6c5eb5; --text: #e8e6ff;
-          --pixel: "C64 Pro Mono", "Press Start 2P", ui-monospace, Menlo, monospace; }
-  * { box-sizing: border-box; }
-  body { margin: 0; background: var(--c64-light); color: var(--text);
-         font: 17px/1.55 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; }
-  .screen { max-width: 980px; margin: 32px auto; padding: 40px 48px; background: var(--c64-blue);
-            border-radius: 0; box-shadow: 0 10px 40px rgba(0,0,0,.35); }
-  .mono { font-family: var(--pixel); font-size: 16px; line-height: 1; letter-spacing: 0;
-          -webkit-font-smoothing: none; font-smooth: never; }
-  h1, h2 { font-family: var(--pixel); font-weight: normal; text-transform: uppercase; line-height: 1.3; }
-  h1 { font-size: 2rem; margin: 0 0 16px; }
-  .byline { margin: -8px 0 16px; color: #a5a0ff; }
-  h2 { font-size: 1rem; margin: 40px 0 14px; color: #a5a0ff; }
-  .boot { color: #a5a0ff; margin: 0 0 32px; white-space: pre; overflow-x: auto; }
-  a { color: #fff; }
-  td a:has(code), a[download] { display: inline-flex; align-items: center; gap: 8px; padding: 3px 10px; border-radius: 4px;
-                   color: #fff; text-decoration: none; background: rgba(165,160,255,.15); border: 1px solid rgba(165,160,255,.35);
-                   transition: background .15s, border-color .15s; }
-  td a:has(code)::after, a[download]::after { content: "\2193"; color: #a5a0ff; font-weight: 700; }
-  td a:has(code):hover, a[download]:hover { background: #a5a0ff; border-color: #a5a0ff; color: var(--c64-blue); }
-  td a:has(code):hover::after, a[download]:hover::after { color: var(--c64-blue); }
-  .shot { width: 100%; height: auto; aspect-ratio: 1280 / 886; object-fit: cover; border-radius: 16px; overflow: hidden;
-          clip-path: inset(0 round 16px); display: block; margin: 20px 0; background: transparent; }
-  .shots { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 20px 0; }
-  .shots figure { margin: 0; }
-  .shots img { width: 100%; height: auto; display: block; border-radius: 10px; background: #000; }
-  .shots figcaption { margin-top: 8px; font-size: .85rem; color: #a5a0ff; text-align: center; }
-  .buttons { display: flex; gap: 12px; flex-wrap: wrap; margin: 20px 0; }
-  .btn { display: inline-block; padding: 11px 20px; border-radius: 4px; text-decoration: none;
-         background: #a5a0ff; color: var(--c64-blue); font-weight: 600; }
-  .btn.alt { background: transparent; color: #fff; border: 2px solid #a5a0ff; }
-  table { width: 100%; border-collapse: collapse; font-size: .95rem; }
-  td, th { text-align: left; vertical-align: top; padding: 7px 10px; border-bottom: 1px solid rgba(165,160,255,.25); }
-  th { color: #a5a0ff; white-space: nowrap; }
-  tr.group td { padding-top: 22px; color: #fff; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
-                font-size: .8rem; border-bottom: 2px solid rgba(165,160,255,.5); }
-  tr.group:first-child td { padding-top: 7px; }
-  code, pre { font-family: ui-monospace, Menlo, monospace; font-size: .9rem; }
-  pre { background: rgba(0,0,0,.25); padding: 14px 16px; border-radius: 4px; overflow-x: auto; }
-  .code { position: relative; }
-  .copy { position: absolute; top: 8px; right: 8px; padding: 4px 10px; border: 1px solid #a5a0ff; border-radius: 4px;
-          background: var(--c64-blue); color: #fff; font: 600 .8rem -apple-system, BlinkMacSystemFont, sans-serif; cursor: pointer; }
-  .copy:hover { background: #a5a0ff; color: var(--c64-blue); }
-  .cursor { display: inline-block; width: .6em; height: 1em; background: var(--text); vertical-align: -2px;
-            animation: blink 1s steps(1) infinite; }
-  @keyframes blink { 50% { opacity: 0; } }
-  footer { margin-top: 40px; font-size: .85rem; color: #a5a0ff; }
-  /* ---- Hero: a C64 screen whose border flashes tape-loader raster bars (three.js shader) ---- */
-  .hero { position: relative; display: grid; place-items: center;
-          padding: 50px clamp(16px, 6vw, 96px); overflow: hidden;
-          background: #000000;   /* black */ }
-  .hero canvas#bars { position: absolute; inset: 0; width: 100%; height: 100%; display: block; opacity: .45; }
-  .hero-screen { position: relative; z-index: 1; width: min(980px, 100%); background: var(--c64-blue);
-                 padding: clamp(24px, 4vw, 48px); display: grid; grid-template-columns: auto 1fr; gap: 12px 40px;
-                 align-items: center; }   /* hard pixel edge: no shadow or blur outside the screen */
-  .hero-screen::after { content: ""; position: absolute; inset: 0; pointer-events: none;   /* scanlines */
-                        background: repeating-linear-gradient(rgba(0,0,0,0) 0 2px, rgba(0,0,0,.16) 2px 3px);
-                        box-shadow: inset 0 0 90px rgba(0,0,0,.45); }
-  .hero-screen .boot { grid-column: 1 / -1; justify-self: center; margin: 0 0 8px; font-size: clamp(9px, 1.5vw, 16px); }
-  .hero-icon { width: clamp(120px, 20vw, 220px); height: auto; filter: drop-shadow(0 18px 30px rgba(0,0,0,.5));
-               animation: bob 4s ease-in-out infinite; }
-  @keyframes bob { 50% { transform: translateY(-10px) rotate(-1.5deg); } }
-  .hero h1 { font-size: clamp(1.4rem, 4.2vw, 2.6rem); margin: 0 0 12px; color: #fff;
-             text-shadow: 3px 3px 0 #000, 0 0 18px rgba(165,160,255,.6); }
-  .hero .byline { margin: 0 0 14px; }
-  .hero .tag { margin: 0; max-width: 34em; }
-  .hero .buttons { margin: 22px 0 0; }
-  .btn { box-shadow: 4px 4px 0 #000; transition: transform .08s, box-shadow .08s; }
-  .btn:hover { transform: translate(2px, 2px); box-shadow: 2px 2px 0 #000; }
-  .btn.alt { box-shadow: none; }
-  .scroller { grid-column: 1 / -1; width: 100%; height: 44px; display: block; margin-top: 18px; }
-  .hero + .screen { margin-top: 50px; }
-  @media (max-width: 760px) { .hero-screen { grid-template-columns: 1fr; text-align: center; justify-items: center; }
-                              .hero .buttons { justify-content: center; } .hero .tag { margin: 0 auto; } }
-  @media (prefers-reduced-motion: reduce) { .hero-icon { animation: none; } }
-  @media (max-width: 640px) { .screen { margin: 0; padding: 24px 18px; border-radius: 0; } h1 { font-size: 1.7rem; }
-                              .shots { grid-template-columns: 1fr; } .roms { display: none; } }
+:root{color-scheme:dark;--bg:#10121b;--panel:#1b1f2d;--text:#f4f4fa;--muted:#b5bdcf;--accent:#a9caff}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:17px/1.65 system-ui,-apple-system,BlinkMacSystemFont,sans-serif}a{color:var(--accent);text-underline-offset:4px}a:focus-visible{outline:3px solid #ffda69;outline-offset:5px}.wrap{max-width:1100px;margin:auto;padding:0 28px}.rainbow{height:7px;background:linear-gradient(90deg,#f34b62 0 20%,#ff9b45 20% 40%,#ffe568 40% 60%,#5fce93 60% 80%,#5c9eff 80%)}header{display:flex;justify-content:space-between;align-items:center;padding:24px 0;gap:20px;flex-wrap:wrap}.brand{display:flex;align-items:center;gap:12px;font-weight:750;color:var(--text);text-decoration:none}.brand img{width:44px;height:44px}nav{display:flex;gap:24px;font-size:15px}nav a{text-decoration:none}.hero{padding:68px 0 48px;display:grid;grid-template-columns:1fr 1fr;gap:40px;align-items:center}.eyebrow{color:#ffda69;font:600 13px/1.5 ui-monospace,monospace;letter-spacing:.12em;text-transform:uppercase}h1{font-size:clamp(42px,5.5vw,66px);line-height:1.06;letter-spacing:-.045em;margin:18px 0 24px}h1 span{color:var(--accent)}.lead{color:var(--muted);font-size:20px;max-width:540px}.buttons{display:flex;gap:12px;flex-wrap:wrap;margin:28px 0 16px}.button{display:inline-flex;align-items:center;justify-content:center;border:1px solid #627497;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:700}.primary{background:#bed5ff;border-color:#bed5ff;color:#101a30}.button:hover{filter:brightness(1.12)}.small{font-size:13px;color:var(--muted)}figure{margin:0}figure img{display:block;width:100%;height:auto;border-radius:12px;box-shadow:0 24px 70px #0008}figcaption{font-size:12px;color:var(--muted);margin-top:14px;text-align:center}.trust{display:flex;gap:12px 24px;flex-wrap:wrap;padding:24px 0;border-top:1px solid #30364b;border-bottom:1px solid #30364b;color:var(--muted);font-size:14px}section{padding:48px 0}h2{font-size:30px;line-height:1.2;letter-spacing:-.025em;margin:0 0 24px}h3{font-size:19px;margin:0 0 8px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.card{padding:25px;border:1px solid #30364b;border-radius:14px;background:var(--panel)}.card p{margin:0;color:var(--muted);font-size:15px}.setup{display:grid;grid-template-columns:1fr 1fr;gap:36px}.setup ol{padding-left:24px;margin:0}.setup li{padding:0 0 12px 5px}.notice{border-left:3px solid #ffda69;padding:18px 22px;background:#242333;color:var(--muted)}.sister{background:linear-gradient(120deg,#2a2251,#1b253b);border:1px solid #554d82;border-radius:16px;padding:30px;display:flex;align-items:center;justify-content:space-between;gap:24px}.sister h2{margin:7px 0 12px}.sister p{margin:0;color:var(--muted);max-width:650px}footer{padding:36px 0 44px;color:var(--muted);font-size:14px;border-top:1px solid #30364b}footer p{margin:8px 0}@media(max-width:800px){.hero{grid-template-columns:1fr;padding-top:34px}.grid,.setup{grid-template-columns:1fr}.sister{display:block}.sister .button{margin-top:24px}nav{gap:16px}.wrap{padding:0 20px}}
+
+:root{--accent:#b9b3ff}html{scroll-behavior:smooth;scroll-padding-top:24px}.hero h1 span{color:#b9b3ff}.primary{background:#c6c0ff;border-color:#c6c0ff}.hero{grid-template-columns:1fr 1fr}.hero>*{min-width:0}.hero figure img{box-shadow:none}.shots{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:28px;margin:28px 0}.shots img{box-shadow:none}.gallery>h2:not(:first-child){margin-top:48px}.gallery>p{max-width:850px;color:var(--muted)}.demo{display:block;width:100%;height:auto;max-height:600px;margin:28px auto 0;border-radius:14px;background:#080a10}.table-scroll{overflow-x:auto;max-width:100%;border:1px solid #30364b;border-radius:12px;margin:20px 0}table{border-collapse:collapse;width:100%;font-size:15px}th,td{text-align:left;vertical-align:top;padding:13px 16px;border-bottom:1px solid #30364b}th{color:var(--text);font-weight:650;min-width:140px}td{color:var(--muted)}tr:last-child>*{border-bottom:0}.group td{background:var(--panel);color:var(--accent);font-weight:700}.reference{margin:18px 0;border:1px solid #30364b;border-radius:12px;padding:18px 22px}.reference summary{cursor:pointer;font-weight:650;color:var(--text)}.reference summary:focus-visible{outline:3px solid #ffda69;outline-offset:5px}.reference[open]>summary{margin-bottom:20px}.reference .table-scroll{margin-bottom:0}.start-copy{max-width:850px}.start-copy>p{color:var(--muted)}code{font: .88em ui-monospace,SFMono-Regular,monospace;overflow-wrap:anywhere;color:#d4ceff}.code{position:relative;margin:20px 0 0;background:#0b0e16;border-radius:10px;padding:24px}.code pre{overflow:auto;padding-top:18px;font:14px/1.7 ui-monospace,monospace;color:var(--muted)}.copy{position:absolute;right:12px;top:10px;padding:5px 12px;background:var(--panel);color:var(--text);border:1px solid #627497;border-radius:6px;cursor:pointer}.sister .button{flex-shrink:0}.trust span::before{content:'✓';color:var(--accent);margin-right:8px}section p:last-child{margin-bottom:0}a,button,summary{-webkit-tap-highlight-color:transparent}button:focus-visible{outline:3px solid #ffda69;outline-offset:4px}@media(max-width:800px){.hero{grid-template-columns:1fr}.shots{gap:20px}.hero figure{max-width:600px}.trust{gap:12px 20px}}@media(max-width:520px){.shots{grid-template-columns:1fr}.reference{padding:16px}.buttons .button{width:100%}nav{font-size:14px;flex-wrap:wrap}th,td{padding:12px}.code{padding:16px}h1{font-size:44px}}@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
 </style>
 </head>
+
 <body>
-<header class="hero">
-  <!-- Raster-bar border, switched off for a plain dark blue background:
-  <canvas id="bars" aria-hidden="true"></canvas>
-  -->
-  <div class="hero-screen">
-    <p class="boot mono">    **** COMMODORE 64 BASIC V2 ****
-
- 64K RAM SYSTEM  38911 BASIC BYTES FREE
-
-READY.
-
-LOAD "C64 FOR MACOS",8,1
-<span class="cursor"></span></p>
-    <img class="hero-icon" src="icon.png" width="512" height="512" alt="C64 app icon">
-    <div>
-      <h1>C64 for macOS</h1>
-      <p class="byline">Created by Todd Bruss</p>
-      <p class="tag">A native Swift/AppKit Commodore 64 &amp; 128 emulator. Cycle-exact CPU and video, a real SID, and true
-         emulation of the 1541, 1571 and 1581 disk drives running their original DOS ROMs. Free and open source.</p>
-      <div class="buttons">
-        <a class="btn" href="https://github.com/AgentiLoop/c64/releases/latest">Download for Mac</a>
-        <a class="btn alt" href="https://github.com/AgentiLoop/c64">Source on GitHub</a>
-      </div>
-    </div>
-    <canvas class="scroller" id="scroller" aria-hidden="true"></canvas>
-  </div>
-</header>
-<main class="screen">
-
-  <video class="shot" src="demo.mp4" poster="poster.jpg" width="1280" height="886"
-         autoplay muted loop playsinline controls aria-label="Screen recording of the C64 app running"></video>
-
+<div class="rainbow" aria-hidden="true"></div>
+<div class="wrap">
+<header><a class="brand" href="/" aria-label="C64 home"><img src="icon.png" width="44" height="44" alt="">C64 <span class="small">/ C128</span></a><nav aria-label="Main navigation"><a href="#start">Get started</a><a href="https://github.com/AgentiLoop/c64">Source</a><a href="https://macmiga.xcf.ai">MacMiga ↗</a></nav></header>
+<main>
+<div class="hero">
+<div><div class="eyebrow">Commodore 64 &amp; 128 · Native Swift</div><h1>Your first computer.<br><span>At home on Mac.</span></h1><p class="lead">The familiar blue screen. The sound of SID. Rediscover the Commodore 64 and 128 in a native Mac app, written in Swift.</p><div class="buttons"><a class="button primary" href="https://github.com/AgentiLoop/c64/releases/latest">Download for Mac ↓</a><a class="button" href="https://github.com/AgentiLoop/c64">Source on GitHub</a></div><p class="small">macOS 14+ · Apple silicon &amp; Intel · Free &amp; open source</p></div>
+<figure><img src="c64-basic.png" width="1274" height="904" alt="C64 for macOS displaying the Commodore 64 BASIC V2 READY screen" fetchpriority="high"><figcaption>38911 BASIC bytes free. Ready when you are.</figcaption></figure>
+</div>
+<div class="trust"><span>Developer ID signed</span><span>Apple notarized</span><span>Universal Mac app</span><span>MIT licensed</span></div>
+<section aria-labelledby="features"><h2 id="features">A little machine. A lot to rediscover.</h2><div class="grid">
+<article class="card"><h3>The sights. The sound.</h3><p>Cycle-stepped VIC-II graphics, SID audio, and NTSC or PAL timing. From a blinking BASIC cursor to sprites, raster effects, and familiar soundtracks.</p></article>
+<article class="card"><h3>Disks, tapes &amp; cartridges</h3><p>1541, 1571, and 1581 drive emulation, Datasette support, and drag-and-drop media. Instant Load and automatic warp get you playing sooner.</p></article>
+<article class="card"><h3>Two Commodores. One app.</h3><p>Switch to the C128 for BASIC 7.0, 40- and 80-column displays, and CP/M on the Z80. Bring your own ROMs and explore a little further.</p></article>
+</div></section>
+<section class="gallery" aria-labelledby="gallery-title"><h2 id="gallery-title">From READY to one more round.</h2><p class="lead">Your programs, your disks, and a whole lot of possibilities.</p>
   <div class="shots">
     <figure>
       <img src="c64-basic.png" width="1274" height="904" loading="lazy" style="background: transparent"
@@ -172,24 +79,10 @@ LOAD "C64 FOR MACOS",8,1
     </figure>
   </div>
 
-  <h2>What's emulated</h2>
-  <table>
-    <tr><th>6510 CPU</th><td>Cycle-exact bus accesses, all documented and undocumented opcodes; passes Klaus Dormann's functional test.</td></tr>
-    <tr><th>VIC-II</th><td>Cycle-stepped: badlines, sprite DMA, border flip-flops, raster IRQ, all text and bitmap modes, sprite collisions.</td></tr>
-    <tr><th>SID 6581</th><td>3 voices, all waveforms, sync/ring, ADSR with real rate tables, resonant multimode filter, digis.</td></tr>
-    <tr><th>NTSC / PAL</th><td>6567R8 (60 Hz, default) or 6569 (50 Hz), or Auto: switches to PAL live when a program needs it. CPU, SID pitch, CIA clocks and drive timing follow.</td></tr>
-    <tr><th>1541 drive</th><td>Drive 6502 running the original DOS ROM, two VIA 6522s, stepper head, GCR at the correct zone speeds. Reads and writes, so fast loaders and copy protection behave like the real thing.</td></tr>
-    <tr><th>1571 drive</th><td>Drive 8 in C128 mode (optional in C64 mode): 2 MHz, both heads, fast serial burst transfers, D71 images, and a WD1770 for MFM CP/M disks.</td></tr>
-    <tr><th>1581 drive</th><td>Device 9: 2 MHz 6502, 8520 CIA and WD1772 controller with the original 1581 DOS; D81 images, including formatting.</td></tr>
-    <tr><th>Datasette</th><td>TAP playback and recording at cycle precision, with automatic warp while the motor runs.</td></tr>
-    <tr><th>Fast loading</th><td>Instant Load copies KERNAL loads straight from the disk image; automatic warp while a drive motor runs.</td></tr>
-    <tr><th>Media</th><td>D64, G64 (raw GCR, for copy-protected disks), D71, D81, CP/M <code>.img</code>, PRG, P00, T64, TAP and CRT cartridges (Ocean, Magic Desk, EasyFlash, Epyx FastLoad and more). Drag a file onto the window and it autostarts. Changes are written back to the image.</td></tr>
-    <tr><th>Drive light</th><td>A light in the title bar: green reading, orange writing, yellow appending, red deleting, purple formatting, pink erasing.</td></tr>
-    <tr><th>Commodore 128</th><td>Machine &#9656; Commodore 128 boots C128 mode with BASIC 7.0: 128K and the 8722 MMU, 40 columns on the VIC-II and 80 columns on the 8563 VDC (ESC X switches; View &#9656; C128 Display picks the 40- or 80-column output by hand, like the input switch on a monitor), FAST 2 MHz mode, GO64, disk boot, the extra C128 keys. CP/M 3.0 on the Z80 (passes ZEXDOC). Needs the C128 ROMs (see below).</td></tr>
-    <tr><th>Modem</th><td>Dial Commodore and PC BBSes over telnet from the user port, SwiftLink or Turbo232 (up to 230,400 baud). Built-in terminal with PETSCII and ASCII/ANSI modes and XMODEM download/upload.</td></tr>
-  </table>
 
-  <h2>Getting started</h2>
+<details class="reference"><summary>Watch the emulator in action</summary><video class="demo" src="demo.mp4" poster="poster.jpg" width="1280" height="886" preload="none" controls playsinline aria-label="Screen recording of the C64 app running"></video></details>
+</section>
+<section id="start" aria-labelledby="start-title"><div class="eyebrow">Up and running</div><h2 id="start-title">Start with your own collection.</h2><div class="start-copy">
   <p>Download <code>C64.app.zip</code> from the releases page, unzip it and open it. It's a Universal app (Apple silicon and Intel),
      signed with Developer ID and notarized by Apple. Requires macOS 14 or later.</p>
   <p><strong>Drag and drop a <code>.d64</code> disk image onto the C64 screen</strong> to insert it in drive 8 and autostart it
@@ -199,8 +92,8 @@ LOAD "C64 FOR MACOS",8,1
   <p>The Commodore ROMs are copyrighted and not included. On first launch the app looks in
      <code>~/Library/Application Support/C64Emu/ROMs</code>, or otherwise asks you for a folder with
      <code>basic</code>, <code>kernal</code> and <code>chargen</code> ROM files (and optionally the 1541/1571/1581 DOS ROMs and the C128 ROMs).</p>
-  <p class="roms">Preferred file names (files are matched by name prefix and must be exactly this size):</p>
-  <table class="roms">
+  <details class="reference"><summary>ROM filenames and sizes</summary><p class="roms">Preferred file names (files are matched by name prefix and must be exactly this size):</p>
+  <div class="table-scroll" tabindex="0" role="region" aria-label="Scrollable reference table"><table class="roms">
     <tr class="group"><td colspan="4">Commodore 64</td></tr>
     <tr><th>BASIC</th><td><a href="https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/C64/basic-901226-01.bin"><code>basic-901226-01.bin</code></a></td><td>8 KB (8192 bytes)</td><td>required</td></tr>
     <tr><th>KERNAL</th><td><a href="https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/C64/kernal-901227-03.bin"><code>kernal-901227-03.bin</code></a></td><td>8 KB (8192 bytes)</td><td>required</td></tr>
@@ -214,8 +107,9 @@ LOAD "C64 FOR MACOS",8,1
     <tr><th>C128 BASIC high</th><td><a href="https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/C128/basichi-318019-04.bin"><code>basichi-318019-04.bin</code></a></td><td>16 KB (16384 bytes)</td><td>needed for C128 mode</td></tr>
     <tr><th>C128 CHARGEN</th><td><a href="https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/C128/chargen-390059-01.bin"><code>chargen-390059-01.bin</code></a></td><td>8 KB (8192 bytes)</td><td>needed for C128 mode</td></tr>
     <tr><th>1571 DOS</th><td><a href="https://raw.githubusercontent.com/VICE-Team/svn-mirror/main/vice/data/DRIVES/dos1571-310654-05.bin"><code>dos1571-310654-05.bin</code></a></td><td>32 KB (32768 bytes)</td><td>optional, drive 8 in C128 mode</td></tr>
-  </table>
-  <p>Or build from source:</p>
+  </table></div>
+</details>
+  <details class="reference"><summary>Build from source</summary>
   <div class="code">
     <button class="copy" type="button" onclick="copyCode(this)">Copy</button>
 <pre>git clone https://github.com/AgentiLoop/c64.git
@@ -224,8 +118,26 @@ cd c64
 open build/C64.app</pre>
   </div>
 
-  <h2>Keys</h2>
-  <table class="keys">
+</details></div></section>
+<section aria-labelledby="reference-title"><h2 id="reference-title">For the curious. And the power users.</h2><details class="reference"><summary>What's emulated</summary>
+  <div class="table-scroll" tabindex="0" role="region" aria-label="Scrollable reference table"><table>
+    <tr><th>6510 CPU</th><td>Cycle-exact bus accesses, all documented and undocumented opcodes; passes Klaus Dormann's functional test.</td></tr>
+    <tr><th>VIC-II</th><td>Cycle-stepped: badlines, sprite DMA, border flip-flops, raster IRQ, all text and bitmap modes, sprite collisions.</td></tr>
+    <tr><th>SID 6581</th><td>3 voices, all waveforms, sync/ring, ADSR with real rate tables, resonant multimode filter, digis.</td></tr>
+    <tr><th>NTSC / PAL</th><td>6567R8 (60 Hz, default) or 6569 (50 Hz), or Auto: switches to PAL live when a program needs it. CPU, SID pitch, CIA clocks and drive timing follow.</td></tr>
+    <tr><th>1541 drive</th><td>Drive 6502 running the original DOS ROM, two VIA 6522s, stepper head, GCR at the correct zone speeds. Reads and writes, so fast loaders and copy protection behave like the real thing.</td></tr>
+    <tr><th>1571 drive</th><td>Drive 8 in C128 mode (optional in C64 mode): 2 MHz, both heads, fast serial burst transfers, D71 images, and a WD1770 for MFM CP/M disks.</td></tr>
+    <tr><th>1581 drive</th><td>Device 9: 2 MHz 6502, 8520 CIA and WD1772 controller with the original 1581 DOS; D81 images, including formatting.</td></tr>
+    <tr><th>Datasette</th><td>TAP playback and recording at cycle precision, with automatic warp while the motor runs.</td></tr>
+    <tr><th>Fast loading</th><td>Instant Load copies KERNAL loads straight from the disk image; automatic warp while a drive motor runs.</td></tr>
+    <tr><th>Media</th><td>D64, G64 (raw GCR, for copy-protected disks), D71, D81, CP/M <code>.img</code>, PRG, P00, T64, TAP and CRT cartridges (Ocean, Magic Desk, EasyFlash, Epyx FastLoad and more). Drag a file onto the window and it autostarts. Changes are written back to the image.</td></tr>
+    <tr><th>Drive light</th><td>A light in the title bar: green reading, orange writing, yellow appending, red deleting, purple formatting, pink erasing.</td></tr>
+    <tr><th>Commodore 128</th><td>Machine &#9656; Commodore 128 boots C128 mode with BASIC 7.0: 128K and the 8722 MMU, 40 columns on the VIC-II and 80 columns on the 8563 VDC (ESC X switches; View &#9656; C128 Display picks the 40- or 80-column output by hand, like the input switch on a monitor), FAST 2 MHz mode, GO64, disk boot, the extra C128 keys. CP/M 3.0 on the Z80 (passes ZEXDOC). Needs the C128 ROMs (see below).</td></tr>
+    <tr><th>Modem</th><td>Dial Commodore and PC BBSes over telnet from the user port, SwiftLink or Turbo232 (up to 230,400 baud). Built-in terminal with PETSCII and ASCII/ANSI modes and XMODEM download/upload.</td></tr>
+  </table></div>
+
+</details><details class="reference" id="keys"><summary>Keyboard &amp; controls</summary>
+  <div class="table-scroll" tabindex="0" role="region" aria-label="Scrollable reference table"><table class="keys">
     <tr class="group"><td colspan="2">Keyboard</td></tr>
     <tr><th>Esc</th><td>RUN/STOP</td></tr>
     <tr><th>Page Up</th><td>RESTORE</td></tr>
@@ -257,145 +169,20 @@ open build/C64.app</pre>
     <tr class="group"><td colspan="2">Datasette</td></tr>
     <tr><th>&#8984;T / &#8984;&#8679;T</th><td>Insert a TAP / new blank TAP</td></tr>
     <tr><th>&#8984;&#8997;1&ndash;4</th><td>Tape play / record / stop / rewind</td></tr>
-  </table>
-
-
-    <p>Sister project: <a href="https://macmiga.xcf.ai">MacMiga — an Amiga 500 emulator for macOS</a>, written in Swift. <a href="https://github.com/AgentiLoop/MacMiga">Source &amp; releases</a>.</p>
-
-  <footer>
-    Created by Todd Bruss &middot; The C64 emulator source is <a href="https://github.com/AgentiLoop/c64/blob/main/LICENSE">MIT licensed</a> &middot; Made with <a href="https://agentiloop.ai">AgentiLoop Agent!</a> &middot;
-    Commodore 64 is a trademark of its respective owner; ROMs and games are not included. Inspired by real Commodore hardware that I used as a kid.
-  </footer>
+  </table></div></details></section>
+<section aria-labelledby="sister-title"><div class="sister"><div><div class="eyebrow">Our sister project</div><h2 id="sister-title">More Commodore. Meet MacMiga.</h2><p>An Amiga 500 emulator for macOS, written in Swift. Two projects, one love of classic computers. <a href="https://github.com/AgentiLoop/MacMiga">Source &amp; releases</a>.</p></div><a class="button" href="https://macmiga.xcf.ai">Explore MacMiga ↗</a></div></section>
 </main>
-<!-- Raster-bar border (three.js), switched off for a plain dark blue background:
-<script type="importmap">{ "imports": { "three": "https://unpkg.com/three@0.170.0/build/three.module.js" } }</script>
-<script type="module">
-// Hero border: tape-loader raster bars in the C64's blues, whites and greys, drawn by a three.js fragment shader
-// on a full-screen quad, with chunky pixels, scanlines and a vignette.
-import * as THREE from "three";
-const canvas = document.getElementById("bars");
-const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
-let renderer;
-try { renderer = new THREE.WebGLRenderer({ canvas, antialias: false }); } catch (e) { renderer = null; }
-if (renderer) {
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-  const scene = new THREE.Scene(), camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-  const hex = ["000000","ffffff","68372b","70a4b2","6f3d86","588d43","352879","b8c76f",
-               "6f4f25","433900","9a6759","444444","6c6c6c","9ad284","6c5eb5","959595"];
-  const uniforms = {
-    time: { value: 0 }, res: { value: new THREE.Vector2() }, dpr: { value: 1 },
-    pal: { value: hex.map(h => new THREE.Vector3(parseInt(h.slice(0, 2), 16) / 255, parseInt(h.slice(2, 4), 16) / 255, parseInt(h.slice(4), 16) / 255)) }   // exact sRGB, written straight out
-  };
-  const material = new THREE.ShaderMaterial({ uniforms, vertexShader: `
-    void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }`, fragmentShader: `
-    uniform float time; uniform vec2 res; uniform float dpr; uniform vec3 pal[16];
-    vec3 c64(int i) { vec3 c = pal[0]; for (int k = 0; k < 16; k++) if (k == i) c = pal[k]; return c; }
-    // Classic C64 raster bars: flat colour per raster line, no blending. Each bar is a symmetric
-    // ramp of the palette (2 raster lines per step), so it looks rounded/metallic.
-    vec3 grayBar(int i) {            // 11 dark grey, 12 grey, 15 light grey, 1 white
-      int k = i < 7 ? i : 13 - i;
-      return c64(k < 2 ? 11 : k < 4 ? 12 : k < 6 ? 15 : 1);
-    }
-    vec3 blueBar(int i) {            // 6 blue, 14 light blue, 3 cyan, 1 white
-      int k = i < 7 ? i : 13 - i;
-      return c64(k < 2 ? 6 : k < 4 ? 14 : k < 6 ? 3 : 1);
-    }
-    void main() {
-      float px = max(2.0, floor(res.y / 270.0));                 // one C64 raster line per block
-      float lines = floor(res.y / px);
-      float y = floor(gl_FragCoord.y / px);
-      vec3 col = c64(0);                                         // black between the bars
-      // The lines: grey bars, 14 raster lines tall, every 34 lines, standing still.
-      // Top bar flush with the top edge, bottom bar flush with the bottom edge: the gaps between
-      // the bars stretch evenly (about 34 lines apart) so the bars fill the full height.
-      float nBars = max(2.0, floor((lines - 14.0) / 34.0 + 0.5) + 1.0);
-      float period = (lines - 14.0) / (nBars - 1.0);
-      float k = min(floor(y / period), nBars - 1.0);
-      float m = y - floor(k * period + 0.5);
-      bool onLine = m >= 0.0 && m < 14.0;
-      if (onLine) col = grayBar(int(m));
-      // In the black gaps: a sparse two-layer starfield drifting left one C64 pixel at a time
-      // (dark grey far, grey near), so the background moves without competing with the bars.
-      if (!onLine) {
-        float xw = floor(res.x / px), x = floor(gl_FragCoord.x / px);
-        for (int l = 0; l < 2; l++) {
-          float fl = float(l);
-          float h = fract(sin((y + 17.0 * fl) * 91.7) * 43758.5453);
-          if (h < 0.22) {
-            float sx = mod(floor(fract(h * 1731.3) * xw) - floor(time * (6.0 + 12.0 * fl)), xw);
-            if (x >= sx && x < sx + 1.0 + fl) col = c64(l == 0 ? 11 : 12);
-          }
-        }
-      }
-      // The beam: one blue bar on a sine. Going up it passes in front of the grey bars,
-      // going down behind them (then it shows only in the black gaps).
-      float phase = time * 0.8;
-      float sw = sin(phase);                     // swing: 3 lines + 8.5 CSS px short at the top, + 13.5 CSS px at the bottom
-      float centre = floor(lines * 0.5 + (lines * 0.44 - 3.0 - (sw < 0.0 ? 13.5 : 8.5) * dpr / px) * sw);
-      float i = y - (centre - 7.0);
-      bool front = cos(phase) > 0.0;
-      if (i >= 0.0 && i < 14.0 && (front || !onLine)) col = blueBar(int(i));
-      col *= 0.9 + 0.1 * step(0.5, fract(gl_FragCoord.y / px * 0.5));     // faint scanlines
-      gl_FragColor = vec4(col, 1.0);
-    }` });
-  scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material));
-  const hero = canvas.parentElement;
-  const resize = () => { const w = hero.clientWidth, h = hero.clientHeight;
-    renderer.setSize(w, h, false); renderer.getDrawingBufferSize(uniforms.res.value);
-    uniforms.dpr.value = renderer.getPixelRatio(); };
-  new ResizeObserver(resize).observe(hero); resize();
-  let visible = true;
-  new IntersectionObserver(([e]) => { visible = e.isIntersecting; }).observe(hero);
-  const clock = new THREE.Clock();
-  renderer.setAnimationLoop(() => {
-    if (!visible && !still) return;
-    uniforms.time.value = still ? 3 : clock.getElapsedTime();
-    renderer.render(scene, camera);
-    if (still) renderer.setAnimationLoop(null);
-  });
-} else { canvas.remove(); }   // no WebGL: the CSS stripes behind it show instead
-</script>
--->
+<footer><p>Created by Todd Bruss · <a href="https://github.com/AgentiLoop/c64">Source on GitHub</a> · <a href="https://github.com/AgentiLoop/c64/issues">Report an issue</a> · <a href="https://github.com/AgentiLoop/c64/blob/main/LICENSE">MIT license</a></p><p>Made with <a href="https://agentiloop.ai">AgentiLoop Agent!</a> · Sister project: <a href="https://macmiga.xcf.ai">MacMiga</a></p><p>Commodore trademarks belong to their respective owners. Commodore ROMs are not included in the app. Inspired by real Commodore hardware that I used as a kid.</p></footer>
+</div>
 <script>
-// DYCP-style sine scroller (each character bobs on its own wave) in the C64's light colours.
-(function () {
-  const cv = document.getElementById("scroller"), g = cv.getContext("2d");
-  const text = "   C64 & C128 FOR MACOS ... TRUE 1541/1571/1581 DRIVES ... SID ... VIC-II ... VDC 80 COLUMNS ... " +
-               "Z80 + CP/M 3.0 ... G64, D71, D81, CRT CARTRIDGES ... BBS MODEM ... GREETINGS TO EVERY 64ER STILL CODING IN 2026 ...   ";
-  // Colour wash through the C64 palette: light red, orange, yellow, light green, green, cyan, light blue, purple, white, and back.
-  const colours = ["#9a6759", "#6f4f25", "#b8c76f", "#9ad284", "#588d43", "#70a4b2", "#6c5eb5", "#6f3d86", "#ffffff",
-                   "#6f3d86", "#6c5eb5", "#70a4b2", "#588d43", "#9ad284", "#b8c76f", "#6f4f25"];
-  const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  let x = 0, ready = false;
-  document.fonts.load('16px "Press Start 2P"').then(() => { ready = true; });
-  function frame(t) {
-    const dpr = Math.min(devicePixelRatio, 2), w = cv.clientWidth, h = cv.clientHeight;
-    if (cv.width !== w * dpr) { cv.width = w * dpr; cv.height = h * dpr; }
-    g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    g.clearRect(0, 0, w, h);
-    g.font = '16px "Press Start 2P", monospace';
-    g.textBaseline = "middle";
-    const cw = 18, n = text.length;
-    if (ready || t > 2000) {
-      for (let i = 0; i * cw - (x % cw) < w + cw; i++) {
-        const k = (Math.floor(x / cw) + i) % n;
-        const cx = i * cw - (x % cw), cy = h / 2 + Math.sin(t / 260 + cx / 55) * (h / 2 - 10);
-        g.fillStyle = "#000"; g.fillText(text[k], cx + 2, cy + 2);
-        g.fillStyle = colours[k % colours.length]; g.fillText(text[k], cx, cy);
-      }
-    }
-    x = (x + 1.6) % (n * cw);
-    if (!still) requestAnimationFrame(frame);
+async function copyCode(button) {
+  try {
+    await navigator.clipboard.writeText(button.parentElement.querySelector('pre').textContent);
+    button.textContent = 'Copied!';
+  } catch {
+    button.textContent = 'Select text to copy';
   }
-  requestAnimationFrame(frame);
-})();
-</script>
-<script>
-function copyCode(btn) {
-  navigator.clipboard.writeText(btn.nextElementSibling.textContent).then(function () {
-    btn.textContent = "Copied!";
-    setTimeout(function () { btn.textContent = "Copy"; }, 1500);
-  });
+  setTimeout(() => { button.textContent = 'Copy'; }, 2000);
 }
 </script>
 </body>
