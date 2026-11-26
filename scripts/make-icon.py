@@ -72,26 +72,41 @@ def icon():
     img.putalpha(shadow)
     img.paste(bg, (0, 0), mask)
 
-    # Pixel "C64": each glyph trimmed to its ink columns, 1 pixel apart, 38 px per pixel, with a dark drop shadow.
-    px = 38
+    # Pixel "C64": each glyph trimmed to its ink columns, 1 pixel apart, 31 px per pixel so the ink is as wide as
+    # MacMiga's "MM" (~612 px), centred on the body. Same letter border as MacMiga: an 18 px round-joined dark
+    # navy halo (0.06, 0.04, 0.20) casting a shadow (black at 55%, 12 px down, blur 20), white letters on top.
+    px, halo, k = 31, 18, 2
     cols = {ch: [c for c in range(8) if any(row[c] == "#" for row in GLYPHS[ch])] for ch in "C64"}
     starts, x0 = [], 0
     for ch in "C64":
         starts.append(x0)
         x0 += len(cols[ch]) + 1
-    w, h = (x0 - 1) * px, 8 * px
-    ox, oy = (S - w) // 2, (S - h) // 2 + px // 2
-    text = Image.new("RGBA", (S, S), (0, 0, 0, 0))
-    td = ImageDraw.Draw(text)
-    for off, col in (((12, 14), (0, 0, 0, 190)), ((0, 0), (255, 255, 255, 255))):
-        for ci, ch in enumerate("C64"):
-            for r, row in enumerate(GLYPHS[ch]):
-                for k, c in enumerate(cols[ch]):
-                    if row[c] == "#":
-                        x = ox + (starts[ci] + k) * px + off[0]
-                        y = oy + r * px + off[1]
-                        td.rectangle([x, y, x + px - 1, y + px - 1], fill=col)
-    img.alpha_composite(text)
+    w, h = (x0 - 1) * px, 7 * px
+    ox, oy = (S - w) // 2, (S - h) // 2
+    cells = [(ox + (starts[ci] + j) * px, oy + r * px)
+             for ci, ch in enumerate("C64") for r, row in enumerate(GLYPHS[ch])
+             for j, c in enumerate(cols[ch]) if row[c] == "#"]
+
+    def layer(grow, fill):
+        """The letters grown by `grow` px with round corners, drawn at k× and scaled down for smooth edges."""
+        big = Image.new("RGBA", (S * k, S * k), (0, 0, 0, 0))
+        d = ImageDraw.Draw(big)
+        for x, y in cells:
+            box = [(x - grow) * k, (y - grow) * k, (x + px + grow) * k - 1, (y + px + grow) * k - 1]
+            if grow:
+                d.rounded_rectangle(box, radius=grow * k, fill=fill)
+            else:
+                d.rectangle(box, fill=fill)
+        return big.resize((S, S), Image.LANCZOS)
+
+    outline = layer(halo, (15, 10, 51, 255))
+    shade = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    shade.putalpha(outline.split()[3].point(lambda v: v * 55 // 100))
+    moved = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    moved.paste(shade, (0, 12))
+    img.alpha_composite(moved.filter(ImageFilter.GaussianBlur(10)))
+    img.alpha_composite(outline)
+    img.alpha_composite(layer(0, (255, 255, 255, 255)))
     return img
 
 
