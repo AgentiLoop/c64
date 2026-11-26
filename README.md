@@ -10,6 +10,9 @@ which keeps the app up to date from GitHub releases.
 |:---:|:---:|:---:|
 | [c64.xcf.ai](https://c64.xcf.ai) | [Latest release](https://github.com/AgentiLoop/c64/releases/latest) | [AgentiLoop Agent!](https://agentiloop.ai) |
 
+**Sister project: [MacMiga](https://macmiga.xcf.ai)** — an Amiga 500 emulator
+for macOS, written in Swift. [Source and releases](https://github.com/AgentiLoop/MacMiga).
+
 <table>
   <tr>
     <td width="50%"><img alt="The C64 at READY" src="docs/c64-basic.png" /></td>
